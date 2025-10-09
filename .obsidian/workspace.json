@@ -20,6 +20,20 @@
               "icon": "lucide-file",
               "title": "README"
             }
+          },
+          {
+            "id": "3c0af4d42ef30d66",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "design/brainstorming/questioning.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "questioning"
+            }
           }
         ]
       }
@@ -171,6 +185,24 @@
   },
   "active": "60ccb8b74e272dda",
   "lastOpenFiles": [
-    "README.md"
+    "design/learning/exercise-0.md",
+    "context/design/learning/exercise-0.md/20251009_102627.cb93115f.md",
+    "context/design/learning/exercise-0.md/steps/_.f7481b02.md",
+    "context/design/learning/exercise-0.md/steps",
+    "context/design/learning/exercise-0.md",
+    "README.md",
+    "context/design/brainstorming/questioning.md/20251009_101410.80729e2c.md",
+    "context/design/brainstorming/questioning.md/20251009_101353.07e056a5.md",
+    "context/design/brainstorming/questioning.md/20251007_210354.dbfa3313.md",
+    "context/design/brainstorming/questioning.md/20251007_210412.34d993fb.md",
+    "design/learning/understanding-concepts.md",
+    "context/design/brainstorming/questioning.md/20251009_102243.9af8cb55.md",
+    "design/brainstorming/questioning.md",
+    "context/design/brainstorming/questioning.md/steps/my response.0e0c37d9.md",
+    "design/background/implementing-concepts.md",
+    "design/background/concept-design-overview.md",
+    "design/background/concept-specifications.md",
+    "context/design/brainstorming/questioning.md/steps/response.b2c2cd46.md",
+    "context/design/brainstorming/questioning.md/steps/prompt.329ab9e7.md"
   ]
 }
