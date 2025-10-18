@@ -1,3 +1,16 @@
+---
+timestamp: 'Sat Oct 18 2025 15:05:06 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_150506.0bcf7093.md]]'
+content_id: 9608f72adac67113adcb05d83bd7a0a7ca9193712e506cd6854c97743e8c7163
+---
+
+# response:
+
+Here's the implementation of the `ListenBrainzAPI` concept in TypeScript, following the provided concept design principles and implementation guidelines.
+
+```typescript
+// file: src/concepts/ListenBrainzAPI/ListenBrainzAPI.ts
+
 
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
@@ -63,7 +76,7 @@ interface StatisticsCacheDoc {
 interface ListenHistoryDoc {
   _id: ID; // Unique ID for the history cache entry (per user)
   user: User;
-  listens: Listen[]; // Stores a segment of listen objects
+  listens: Record<string, unknown>[]; // Stores a segment of listen objects
   lastFetched: Date;
 }
 
@@ -192,7 +205,7 @@ export default class ListenBrainzAPIConcept {
       return (await response.json()) as T;
     } catch (e) {
       console.error(`Error calling ListenBrainz API: ${e}`);
-      return { error: `Network or API call failed: ${(e as Error).message}` };
+      return { error: `Network or API call failed: ${e.message}` };
     }
   }
 
@@ -444,6 +457,63 @@ export default class ListenBrainzAPIConcept {
   }
 
   /**
+   * @action submitListen
+   * @requires user has valid scrobbleToken, listenType is one of "single", "playing_now", or "import", trackData contains valid track metadata
+   * @effect submits a listen (scrobble) to ListenBrainz API for the user. Used for "single" (past listen), "playing_now" (current track), or "import" (batch import).
+   */
+  async submitListen(
+    { user, scrobbleToken, listenType, trackData }: { user: User; scrobbleToken: string; listenType: string; trackData: Record<string, unknown> },
+  ): Promise<Empty | { error?: string }> {
+    // 1. Validate inputs
+    const validListenTypes = ["single", "playing_now", "import"];
+    if (!validListenTypes.includes(listenType)) {
+      return { error: `Invalid listenType: ${listenType}. Must be one of ${validListenTypes.join(", ")}.` };
+    }
+    // Basic validation for trackData: requires artist_name and track_name
+    if (typeof trackData?.artist_name !== "string" || typeof trackData?.track_name !== "string") {
+      return { error: "trackData must contain at least 'artist_name' and 'track_name' strings." };
+    }
+
+    // For 'single' or 'import' listen types, 'listened_at' (Unix timestamp) is required in the payload.
+    if ((listenType === "single" || listenType === "import") && typeof trackData.listened_at !== "number") {
+      return { error: `For '${listenType}' listen_type, trackData must include 'listened_at' (Unix timestamp).` };
+    }
+
+    // Invalidate relevant caches as new listen data will change statistics
+    await this.clearCache({ user });
+
+    const listenPayload = {
+      listen_type: listenType,
+      payload: [
+        {
+          listened_at: trackData.listened_at || Math.floor(Date.now() / 1000), // Use provided or current timestamp
+          track_metadata: {
+            artist_name: trackData.artist_name,
+            track_name: trackData.track_name,
+            release_name: trackData.release_name,
+            // Include other track_metadata fields if available and desired
+            mbid_mapping: trackData.mbid_mapping,
+          },
+        },
+      ],
+    };
+
+    const result = await this._callListenBrainzAPI<Empty>(
+      scrobbleToken,
+      "listens",
+      {},
+      "POST",
+      listenPayload,
+    );
+
+    if ("error" in result) {
+      return result;
+    }
+
+    return {}; // Success, empty result
+  }
+
+  /**
    * @action getListeningActivity
    * @requires user has valid scrobbleToken, timeRange is valid
    * @effect fetches listening activity statistics showing number of listens over time periods.
@@ -531,7 +601,7 @@ export default class ListenBrainzAPIConcept {
       return { valid: true, username: profile.user_name || profile.username }; // Profile endpoint returns user_name
     } catch (e) {
       console.error(`Error validating ListenBrainz token: ${e}`);
-      return { valid: false, error: `Network or API call failed during token validation: ${(e as Error).message}` };
+      return { valid: false, error: `Network or API call failed during token validation: ${e.message}` };
     }
   }
 
@@ -547,7 +617,8 @@ export default class ListenBrainzAPIConcept {
       return {};
     } catch (e) {
       console.error(`Error clearing cache for user ${user}: ${e}`);
-      return { error: `Failed to clear cache: ${(e as Error).message}` };
+      return { error: `Failed to clear cache: ${e.message}` };
     }
   }
 }
+```

@@ -40,10 +40,6 @@
   * **requires**: user has valid scrobbleToken, either minTimestamp or maxTimestamp is provided (not both), count is positive
   * **effect**: fetches the user's listen history from ListenBrainz API. Returns list of individual listens with track metadata and timestamps.
 
- * `submitListen(user: User, listenType: String, trackData: JSON): ()`
-  * **requires**: user has valid scrobbleToken, listenType is one of "single", "playing_now", or "import", trackData contains valid track metadata
-  * **effect**: submits a listen (scrobble) to ListenBrainz API for the user. Used for "single" (past listen), "playing_now" (current track), or "import" (batch import).
-
  * `getListeningActivity(user: User, timeRange: String): (activity: JSON)`
   * **requires**: user has valid scrobbleToken, timeRange is valid
   * **effect**: fetches listening activity statistics showing number of listens over time periods.
