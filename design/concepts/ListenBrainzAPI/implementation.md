@@ -81,7 +81,7 @@ interface StatisticsCacheDoc {
 interface ListenHistoryDoc {
   _id: ID; // Unique ID for the history cache entry (per user)
   user: User;
-  listens: Record<string, unknown>[]; // Stores a segment of listen objects
+  listens: Listen[]; // Stores a segment of listen objects
   lastFetched: Date;
 }
 
@@ -155,7 +155,9 @@ export default class ListenBrainzAPIConcept {
     this.listenHistoryCache = this.db.collection(PREFIX + "listenHistoryCache");
 
     // Ensure unique indexes for efficient lookup and preventing duplicate cache entries
-    this.statsCache.createIndex({ user: 1, statType: 1, timeRange: 1 }, { unique: true });
+    this.statsCache.createIndex({ user: 1, statType: 1, timeRange: 1 }, {
+      unique: true,
+    });
     this.listenHistoryCache.createIndex({ user: 1 }, { unique: true }); // One history cache entry per user
   }
 
@@ -199,7 +201,9 @@ export default class ListenBrainzAPIConcept {
           return { error: "Invalid ListenBrainz token or unauthorized." };
         }
         const errorText = await response.text();
-        return { error: `ListenBrainz API error: ${response.status} - ${errorText}` };
+        return {
+          error: `ListenBrainz API error: ${response.status} - ${errorText}`,
+        };
       }
 
       // Handle cases where API returns 204 No Content (e.g., successful listen submission)
@@ -210,16 +214,21 @@ export default class ListenBrainzAPIConcept {
       return (await response.json()) as T;
     } catch (e) {
       console.error(`Error calling ListenBrainz API: ${e}`);
-      return { error: `Network or API call failed: ${e.message}` };
+      return { error: `Network or API call failed: ${(e as Error).message}` };
     }
   }
 
   // Internal helper to get username from token. This involves a call to the LB API.
   // It's used by other actions to construct API paths that require the username.
-  private async _getUsernameFromToken(token: string): Promise<{ username?: string; error?: string }> {
+  private async _getUsernameFromToken(
+    token: string,
+  ): Promise<{ username?: string; error?: string }> {
     const validationResult = await this.validateToken({ token });
     if (!validationResult.valid || !validationResult.username) {
-      return { error: validationResult.error || "Failed to retrieve username for token." };
+      return {
+        error: validationResult.error ||
+          "Failed to retrieve username for token.",
+      };
     }
     return { username: validationResult.username };
   }
@@ -238,19 +247,29 @@ export default class ListenBrainzAPIConcept {
     if (!VALID_TIME_RANGES.includes(timeRange)) {
       return { error: `Invalid timeRange: ${timeRange}` };
     }
-    if (count < 0) {
+    if (count <= 0) {
       return { error: `Count must be non-negative: ${count}` };
     }
 
     // 2. Check cache
-    const cachedStats = await this.statsCache.findOne({ user, statType, timeRange });
-    if (cachedStats && (new Date().getTime() - cachedStats.lastUpdated.getTime()) < this.CACHE_TTL_MS) {
+    const cachedStats = await this.statsCache.findOne({
+      user,
+      statType,
+      timeRange,
+    });
+    if (
+      cachedStats &&
+      (new Date().getTime() - cachedStats.lastUpdated.getTime()) <
+        this.CACHE_TTL_MS
+    ) {
       // Return cached data, potentially slicing to 'count' if cached data is richer
       return (cachedStats.data.items as T[] || []).slice(0, count);
     }
 
     // 3. Fetch from API
-    const result = await this._callListenBrainzAPI<{ payload: { [key: string]: T[] } }>(
+    const result = await this._callListenBrainzAPI<
+      { payload: { [key: string]: T[] } }
+    >(
       scrobbleToken,
       endpoint,
       { range: timeRange, count: count },
@@ -284,7 +303,12 @@ export default class ListenBrainzAPIConcept {
    * @effect fetches and returns top artists for the user from ListenBrainz API for the specified time range, with pagination support. Each artist includes name, MBIDs, and listen count.
    */
   async getTopArtists(
-    { user, scrobbleToken, timeRange, count }: { user: User; scrobbleToken: string; timeRange: string; count: number },
+    { user, scrobbleToken, timeRange, count }: {
+      user: User;
+      scrobbleToken: string;
+      timeRange: string;
+      count: number;
+    },
   ): Promise<{ artists?: Artist[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
     if ("error" in usernameResult) {
@@ -314,7 +338,12 @@ export default class ListenBrainzAPIConcept {
    * @effect fetches and returns top releases (albums) for the user from ListenBrainz API for the specified time range, with pagination support. Each release includes name, artist, MBID, and listen count.
    */
   async getTopReleases(
-    { user, scrobbleToken, timeRange, count }: { user: User; scrobbleToken: string; timeRange: string; count: number },
+    { user, scrobbleToken, timeRange, count }: {
+      user: User;
+      scrobbleToken: string;
+      timeRange: string;
+      count: number;
+    },
   ): Promise<{ releases?: Release[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
     if ("error" in usernameResult) {
@@ -343,7 +372,12 @@ export default class ListenBrainzAPIConcept {
    * @effect fetches and returns top release groups (album versions) for the user from ListenBrainz API for the specified time range. Each release group includes name, artist, MBID, cover art, and listen count.
    */
   async getTopReleaseGroups(
-    { user, scrobbleToken, timeRange, count }: { user: User; scrobbleToken: string; timeRange: string; count: number },
+    { user, scrobbleToken, timeRange, count }: {
+      user: User;
+      scrobbleToken: string;
+      timeRange: string;
+      count: number;
+    },
   ): Promise<{ releaseGroups?: ReleaseGroup[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
     if ("error" in usernameResult) {
@@ -372,7 +406,12 @@ export default class ListenBrainzAPIConcept {
    * @effect fetches and returns top recordings (tracks/songs) for the user from ListenBrainz API for the specified time range. Each recording includes track name, artist, release, MBID, and listen count.
    */
   async getTopRecordings(
-    { user, scrobbleToken, timeRange, count }: { user: User; scrobbleToken: string; timeRange: string; count: number },
+    { user, scrobbleToken, timeRange, count }: {
+      user: User;
+      scrobbleToken: string;
+      timeRange: string;
+      count: number;
+    },
   ): Promise<{ recordings?: Recording[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
     if ("error" in usernameResult) {
@@ -415,7 +454,10 @@ export default class ListenBrainzAPIConcept {
   ): Promise<{ listens?: Listen[]; error?: string }> {
     // 1. Validate inputs
     if (minTimestamp && maxTimestamp) {
-      return { error: "Cannot provide both minTimestamp and maxTimestamp. Use one for paginated fetches from ListenBrainz API." };
+      return {
+        error:
+          "Cannot provide both minTimestamp and maxTimestamp. Use one for paginated fetches from ListenBrainz API.",
+      };
     }
     if (count <= 0) {
       return { error: "Count must be positive." };
@@ -439,7 +481,9 @@ export default class ListenBrainzAPIConcept {
     }
 
     // 2. Fetch from API (no direct cache read for dynamic ranges)
-    const result = await this._callListenBrainzAPI<{ payload: { listens: Listen[] } }>(
+    const result = await this._callListenBrainzAPI<
+      { payload: { listens: Listen[] } }
+    >(
       scrobbleToken,
       `user/${username}/listens`,
       apiParams,
@@ -454,68 +498,14 @@ export default class ListenBrainzAPIConcept {
     // Update the lastFetched timestamp and store the fetched segment in cache (overwriting previous)
     await this.listenHistoryCache.updateOne(
       { user },
-      { $set: { listens, lastFetched: new Date() }, $setOnInsert: { _id: freshID(), user } },
+      {
+        $set: { listens, lastFetched: new Date() },
+        $setOnInsert: { _id: freshID(), user },
+      },
       { upsert: true },
     );
 
     return { listens };
-  }
-
-  /**
-   * @action submitListen
-   * @requires user has valid scrobbleToken, listenType is one of "single", "playing_now", or "import", trackData contains valid track metadata
-   * @effect submits a listen (scrobble) to ListenBrainz API for the user. Used for "single" (past listen), "playing_now" (current track), or "import" (batch import).
-   */
-  async submitListen(
-    { user, scrobbleToken, listenType, trackData }: { user: User; scrobbleToken: string; listenType: string; trackData: Record<string, unknown> },
-  ): Promise<Empty | { error?: string }> {
-    // 1. Validate inputs
-    const validListenTypes = ["single", "playing_now", "import"];
-    if (!validListenTypes.includes(listenType)) {
-      return { error: `Invalid listenType: ${listenType}. Must be one of ${validListenTypes.join(", ")}.` };
-    }
-    // Basic validation for trackData: requires artist_name and track_name
-    if (typeof trackData?.artist_name !== "string" || typeof trackData?.track_name !== "string") {
-      return { error: "trackData must contain at least 'artist_name' and 'track_name' strings." };
-    }
-
-    // For 'single' or 'import' listen types, 'listened_at' (Unix timestamp) is required in the payload.
-    if ((listenType === "single" || listenType === "import") && typeof trackData.listened_at !== "number") {
-      return { error: `For '${listenType}' listen_type, trackData must include 'listened_at' (Unix timestamp).` };
-    }
-
-    // Invalidate relevant caches as new listen data will change statistics
-    await this.clearCache({ user });
-
-    const listenPayload = {
-      listen_type: listenType,
-      payload: [
-        {
-          listened_at: trackData.listened_at || Math.floor(Date.now() / 1000), // Use provided or current timestamp
-          track_metadata: {
-            artist_name: trackData.artist_name,
-            track_name: trackData.track_name,
-            release_name: trackData.release_name,
-            // Include other track_metadata fields if available and desired
-            mbid_mapping: trackData.mbid_mapping,
-          },
-        },
-      ],
-    };
-
-    const result = await this._callListenBrainzAPI<Empty>(
-      scrobbleToken,
-      "listens",
-      {},
-      "POST",
-      listenPayload,
-    );
-
-    if ("error" in result) {
-      return result;
-    }
-
-    return {}; // Success, empty result
   }
 
   /**
@@ -524,7 +514,11 @@ export default class ListenBrainzAPIConcept {
    * @effect fetches listening activity statistics showing number of listens over time periods.
    */
   async getListeningActivity(
-    { user, scrobbleToken, timeRange }: { user: User; scrobbleToken: string; timeRange: string },
+    { user, scrobbleToken, timeRange }: {
+      user: User;
+      scrobbleToken: string;
+      timeRange: string;
+    },
   ): Promise<{ activity?: ListeningActivity; error?: string }> {
     // 1. Validate inputs
     if (!VALID_TIME_RANGES.includes(timeRange)) {
@@ -539,13 +533,23 @@ export default class ListenBrainzAPIConcept {
 
     // This can be cached in StatisticsCache with statType "activity"
     const statType: ListenBrainzStatType = "activity";
-    const cachedActivity = await this.statsCache.findOne({ user, statType, timeRange });
-    if (cachedActivity && (new Date().getTime() - cachedActivity.lastUpdated.getTime()) < this.CACHE_TTL_MS) {
+    const cachedActivity = await this.statsCache.findOne({
+      user,
+      statType,
+      timeRange,
+    });
+    if (
+      cachedActivity &&
+      (new Date().getTime() - cachedActivity.lastUpdated.getTime()) <
+        this.CACHE_TTL_MS
+    ) {
       return { activity: cachedActivity.data as ListeningActivity };
     }
 
     // 2. Fetch from API
-    const result = await this._callListenBrainzAPI<{ payload: { listening_activity: ListeningActivity } }>(
+    const result = await this._callListenBrainzAPI<
+      { payload: { listening_activity: ListeningActivity } }
+    >(
       scrobbleToken,
       `stats/user/${username}/listening-activity`,
       { range: timeRange },
@@ -586,8 +590,8 @@ export default class ListenBrainzAPIConcept {
     }
 
     try {
-      // The /profile endpoint is a good way to validate a token and get the associated username.
-      const response = await fetch(LISTENBRAINZ_API_BASE + "profile", {
+      // The /validate-token endpoint validates the token and returns user info
+      const response = await fetch(LISTENBRAINZ_API_BASE + "validate-token", {
         headers: {
           "Authorization": `Token ${token}`,
           "User-Agent": "ListenBuddy/1.0.0 ( contact@example.com )",
@@ -599,14 +603,27 @@ export default class ListenBrainzAPIConcept {
           return { valid: false, error: "Invalid ListenBrainz token." };
         }
         const errorText = await response.text();
-        return { valid: false, error: `ListenBrainz API error validating token: ${response.status} - ${errorText}` };
+        return {
+          valid: false,
+          error:
+            `ListenBrainz API error validating token: ${response.status} - ${errorText}`,
+        };
       }
 
-      const profile = await response.json();
-      return { valid: true, username: profile.user_name || profile.username }; // Profile endpoint returns user_name
+      const result = await response.json();
+      // Check if the token is actually valid according to the API response
+      if (result.valid !== true) {
+        return { valid: false, error: "Invalid ListenBrainz token." };
+      }
+      return { valid: true, username: result.user_name }; // validate-token endpoint returns user_name
     } catch (e) {
       console.error(`Error validating ListenBrainz token: ${e}`);
-      return { valid: false, error: `Network or API call failed during token validation: ${e.message}` };
+      return {
+        valid: false,
+        error: `Network or API call failed during token validation: ${
+          (e as Error).message
+        }`,
+      };
     }
   }
 
@@ -615,15 +632,18 @@ export default class ListenBrainzAPIConcept {
    * @requires user exists
    * @effect removes all cached statistics and listen history for the user, forcing fresh API calls on next request.
    */
-  async clearCache({ user }: { user: User }): Promise<Empty | { error?: string }> {
+  async clearCache(
+    { user }: { user: User },
+  ): Promise<Empty | { error?: string }> {
     try {
       await this.statsCache.deleteMany({ user });
       await this.listenHistoryCache.deleteMany({ user });
       return {};
     } catch (e) {
       console.error(`Error clearing cache for user ${user}: ${e}`);
-      return { error: `Failed to clear cache: ${e.message}` };
+      return { error: `Failed to clear cache: ${(e as Error).message}` };
     }
   }
 }
+
 ```

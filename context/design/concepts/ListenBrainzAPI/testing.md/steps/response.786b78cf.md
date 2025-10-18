@@ -1,8 +1,9 @@
-[@implementation](implementation.md)
+---
+timestamp: 'Sat Oct 18 2025 16:00:00 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_160000.2c89b709.md]]'
+content_id: 786b78cf9e19befd11ce40f3e766bb5f4d033145b467616812b5b283d958ae8c
+---
 
-[@testing-concepts](../../background/testing-concepts.md)
-
-# test: ListenBrainzAPI, using LISTENBRAINZ_TOKEN from .env in the root
 # response:
 
 ```typescript

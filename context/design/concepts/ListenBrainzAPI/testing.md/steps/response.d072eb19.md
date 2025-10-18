@@ -1,8 +1,9 @@
-[@implementation](implementation.md)
+---
+timestamp: 'Sat Oct 18 2025 15:54:30 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_155430.32a0de70.md]]'
+content_id: d072eb193fd3f6ff08c0154ee1bf301a992dfac1c16f39e5726a0845f6dbf7b0
+---
 
-[@testing-concepts](../../background/testing-concepts.md)
-
-# test: ListenBrainzAPI, using LISTENBRAINZ_TOKEN from .env in the root
 # response:
 
 ```typescript
@@ -23,7 +24,6 @@ import { ID } from "@utils/types.ts";
 // Make sure you have a .env file in the project root with LISTENBRAINZ_TOKEN="your_token_here"
 const LISTENBRAINZ_TOKEN = Deno.env.get("LISTENBRAINZ_TOKEN") as string;
 const TEST_USER_ID = "test_user_lbapi" as ID; // A dummy user ID for caching purposes
-const OUTPUT = false; //true for verbose debugging
 
 // Constants for timestamp calculations
 const ONE_DAY_IN_SECONDS = 24 * 3600;
@@ -86,7 +86,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "week",
       count: 5,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(
       result.artists,
       `Expected artists to be returned, but got error: ${result.error}`,
@@ -113,7 +113,6 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "month",
       count: 3,
     });
-    if (OUTPUT) console.log(firstCallResult);
     assertExists(firstCallResult.artists);
 
     const initialCacheEntry = await db.collection(
@@ -132,7 +131,6 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "month",
       count: 3,
     });
-    if (OUTPUT) console.log(secondCallResult);
     assertExists(secondCallResult.artists);
     assertEquals(
       secondCallResult.artists.length,
@@ -177,7 +175,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "invalid_range",
       count: 5,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(result.error);
     assertNotEquals(result.error, "");
     assertEquals(result.error, "Invalid timeRange: invalid_range");
@@ -190,7 +188,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "week",
       count: -1,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(result.error);
     assertNotEquals(result.error, "");
     assertEquals(result.error, "Count must be non-negative: -1");
@@ -203,7 +201,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "week",
       count: 0,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(result.error);
     assertEquals(result.error, "Count must be non-negative: 0");
   });
@@ -215,7 +213,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "year",
       count: 2,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(
       result.releases,
       `Expected releases to be returned, but got error: ${result.error}`,
@@ -234,7 +232,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
         timeRange: "all_time",
         count: 1,
       });
-      if (OUTPUT) console.log(result);
+      console.log(result);
       assertExists(
         result.releaseGroups,
         `Expected release groups to be returned, but got error: ${result.error}`,
@@ -252,7 +250,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       timeRange: "week",
       count: 4,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(
       result.recordings,
       `Expected recordings to be returned, but got error: ${result.error}`,
@@ -270,7 +268,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       minTimestamp: oneDayAgo,
       count: 5,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(
       result.listens,
       `Expected listen history, but got error: ${result.error}`,
@@ -290,7 +288,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
       maxTimestamp: now,
       count: 5,
     });
-    if (OUTPUT) console.log(result);
+    console.log(result);
     assertExists(
       result.listens,
       `Expected listen history, but got error: ${result.error}`,
@@ -311,7 +309,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
         maxTimestamp: 2,
         count: 5,
       });
-      if (OUTPUT) console.log(result);
+      console.log(result);
       assertExists(result.error);
       assertEquals(
         result.error,
@@ -329,7 +327,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
         minTimestamp: 1,
         count: 0,
       });
-      if (OUTPUT) console.log(result);
+      console.log(result);
       assertExists(result.error);
       assertEquals(result.error, "Count must be positive.");
     },
@@ -343,7 +341,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
         scrobbleToken: LISTENBRAINZ_TOKEN,
         timeRange: "year",
       });
-      if (OUTPUT) console.log(result);
+      console.log(result);
       assertExists(
         result.activity,
         `Expected listening activity, but got error: ${result.error}`,
@@ -362,7 +360,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
         scrobbleToken: LISTENBRAINZ_TOKEN,
         timeRange: "bad_range",
       });
-      if (OUTPUT) console.log(result);
+      console.log(result);
       assertExists(result.error);
       assertEquals(result.error, "Invalid timeRange: bad_range");
     },
@@ -507,5 +505,4 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
 
   await client.close();
 });
-
 ```

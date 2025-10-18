@@ -1,3 +1,17 @@
+---
+timestamp: 'Sat Oct 18 2025 15:53:35 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_155335.cc7ea612.md]]'
+content_id: 427bfc04e7204b0ce635f86ba5f51e801219c217f21cd7a4e1214021bf158b3a
+---
+
+# response:
+
+Here's the implementation of the `ListenBrainzAPI` concept in TypeScript, following the provided concept design principles and implementation guidelines.
+
+```typescript
+// file: src/concepts/ListenBrainzAPI/ListenBrainzAPI.ts
+
+
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
@@ -626,3 +640,5 @@ export default class ListenBrainzAPIConcept {
     }
   }
 }
+
+```
