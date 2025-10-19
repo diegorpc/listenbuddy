@@ -16,7 +16,6 @@ Here's the implementation of the `ListenBrainzAPI` concept in TypeScript, follow
 ```typescript
 // file: src/concepts/ListenBrainzAPI/ListenBrainzAPI.ts
 
-
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
@@ -90,55 +89,89 @@ interface ListenHistoryDoc {
 // and are used as return types for the concept's actions.
 interface Artist {
   artist_name: string;
-  artist_mbid?: string; // MusicBrainz ID for the artist
+  artist_mbid: string | null; // MusicBrainz ID for the artist
   listen_count: number;
-  // Other potential fields from ListenBrainz API, omitted for brevity
+}
+
+interface ArtistCredit {
+  artist_credit_name: string;
+  artist_mbid: string;
+  join_phrase: string;
 }
 
 interface Release {
-  release_name: string;
+  artist_mbids: string[];
   artist_name: string;
-  release_mbid?: string; // MusicBrainz ID for the release
+  artists: ArtistCredit[];
+  caa_id: number | null; // Cover Art Archive ID
+  caa_release_mbid: string | null; // Cover Art Archive release MBID
   listen_count: number;
-  // Other potential fields
+  release_mbid: string | null; // MusicBrainz ID for the release
+  release_name: string;
 }
 
 interface ReleaseGroup {
-  release_group_name: string;
+  artist_mbids: string[];
   artist_name: string;
-  release_group_mbid?: string; // MusicBrainz ID for the release group
-  // cover_art_url is often derived via MusicBrainz, not directly from ListenBrainz top items.
+  artists: ArtistCredit[];
+  caa_id: number | null; // Cover Art Archive ID
+  caa_release_mbid: string | null; // Cover Art Archive release MBID
   listen_count: number;
-  // Other potential fields
+  release_group_mbid: string | null; // MusicBrainz ID for the release group
+  release_group_name: string;
 }
 
 interface Recording {
-  track_name: string;
+  artist_mbids: string[];
   artist_name: string;
-  release_name?: string;
-  recording_mbid?: string; // MusicBrainz ID for the recording
+  artists: ArtistCredit[] | null;
+  caa_id: number | null; // Cover Art Archive ID
+  caa_release_mbid: string | null; // Cover Art Archive release MBID
   listen_count: number;
-  // Other potential fields
+  recording_mbid: string | null; // MusicBrainz ID for the recording
+  release_mbid: string | null;
+  release_name: string | null;
+  track_name: string;
 }
 
 interface Listen {
-  listened_at: number; // Unix timestamp
+  inserted_at: number; // Unix timestamp when inserted into ListenBrainz
+  listened_at: number; // Unix timestamp when listened to
+  recording_msid: string; // MessyBrainz ID for the recording
   track_metadata: {
+    additional_info?: {
+      artist_mbids?: string[];
+      artist_names?: string[];
+      duration_ms?: number;
+      recording_msid?: string;
+      submission_client?: string;
+      submission_client_version?: string;
+      tracknumber?: number;
+    };
     artist_name: string;
-    track_name: string;
-    release_name?: string;
     mbid_mapping?: {
       artist_mbids?: string[];
-      release_mbids?: string[];
-      recording_mbids?: string[];
+      artists?: ArtistCredit[];
+      caa_id?: number;
+      caa_release_mbid?: string;
+      recording_mbid?: string;
+      recording_name?: string;
+      release_mbid?: string;
     };
+    release_name?: string;
+    track_name: string;
   };
-  // Other potential fields
+  user_name: string;
 }
 
-interface ListeningActivity {
-  [timePeriod: string]: number; // e.g., "2023-01": 150, "2023-02": 160
+interface ListeningActivityPeriod {
+  from_ts: number; // Unix timestamp for start of period
+  listen_count: number;
+  time_range: string; // e.g., "January 2023"
+  to_ts: number; // Unix timestamp for end of period
 }
+
+type ListeningActivity = ListeningActivityPeriod[];
 
 /**
  * @concept ListenBrainzAPI[User]
@@ -149,6 +182,10 @@ export default class ListenBrainzAPIConcept {
   private statsCache: Collection<StatisticsCacheDoc>;
   private listenHistoryCache: Collection<ListenHistoryDoc>;
   private readonly CACHE_TTL_MS = 3600 * 1000; // 1 hour for statistics cache
+
+  // Rate limiting state
+  private rateLimitRemaining: number = Infinity;
+  private rateLimitResetTime: number = 0; // Unix timestamp in seconds
 
   constructor(private readonly db: Db) {
     this.statsCache = this.db.collection(PREFIX + "statisticsCache");
@@ -169,6 +206,14 @@ export default class ListenBrainzAPIConcept {
     method: "GET" | "POST" = "GET",
     body: Record<string, unknown> | null = null,
   ): Promise<T | { error: string }> {
+    // Check if we need to wait for rate limit reset
+    const now = Date.now() / 1000; // Convert to seconds
+    if (this.rateLimitRemaining <= 0 && this.rateLimitResetTime > now) {
+      const waitTime = Math.ceil(this.rateLimitResetTime - now);
+      console.log(`Rate limit reached. Waiting ${waitTime} seconds...`);
+      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
+    }
+
     const url = new URL(LISTENBRAINZ_API_BASE + endpoint);
     if (method === "GET") {
       for (const key in params) {
@@ -196,8 +241,43 @@ export default class ListenBrainzAPIConcept {
 
       const response = await fetch(url.toString(), fetchOptions);
 
+      // Update rate limit info from response headers
+      const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining");
+      const rateLimitResetIn = response.headers.get("X-RateLimit-Reset-In");
+
+      if (rateLimitRemaining !== null) {
+        this.rateLimitRemaining = parseInt(rateLimitRemaining, 10);
+      }
+      if (rateLimitResetIn !== null) {
+        const resetInSeconds = parseInt(rateLimitResetIn, 10);
+        this.rateLimitResetTime = (Date.now() / 1000) + resetInSeconds;
+      }
+
+      // Handle 429 rate limit error specifically
+      if (response.status === 429) {
+        await response.body?.cancel();
+        const resetInSeconds = rateLimitResetIn
+          ? parseInt(rateLimitResetIn, 10)
+          : 60;
+        console.log(
+          `Rate limit exceeded. Waiting ${resetInSeconds} seconds before retry...`,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, resetInSeconds * 1000)
+        );
+        // Retry the request once after waiting
+        return this._callListenBrainzAPI(
+          scrobbleToken,
+          endpoint,
+          params,
+          method,
+          body,
+        );
+      }
+
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
+          await response.body?.cancel();
           return { error: "Invalid ListenBrainz token or unauthorized." };
         }
         const errorText = await response.text();
@@ -543,7 +623,9 @@ export default class ListenBrainzAPIConcept {
       (new Date().getTime() - cachedActivity.lastUpdated.getTime()) <
         this.CACHE_TTL_MS
     ) {
-      return { activity: cachedActivity.data as ListeningActivity };
+      return {
+        activity: (cachedActivity.data.activity as ListeningActivity) || [],
+      };
     }
 
     // 2. Fetch from API
@@ -559,14 +641,14 @@ export default class ListenBrainzAPIConcept {
       return result;
     }
 
-    const activity = result.payload?.listening_activity || {};
+    const activity = result.payload?.listening_activity || [];
 
     // 3. Update cache
     await this.statsCache.updateOne(
       { user, statType, timeRange },
       {
         $set: {
-          data: activity,
+          data: { activity }, // Wrap array in object to match Record<string, unknown>
           lastUpdated: new Date(),
         },
         $setOnInsert: { _id: freshID(), user, statType, timeRange },
@@ -600,6 +682,7 @@ export default class ListenBrainzAPIConcept {
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
+          await response.body?.cancel();
           return { valid: false, error: "Invalid ListenBrainz token." };
         }
         const errorText = await response.text();
@@ -645,5 +728,4 @@ export default class ListenBrainzAPIConcept {
     }
   }
 }
-
 ```

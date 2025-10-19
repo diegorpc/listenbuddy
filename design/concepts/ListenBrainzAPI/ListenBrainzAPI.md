@@ -8,15 +8,20 @@
 
 * **state**: 
  * A set of `StatisticsCache` with:
+   * an `_id` of type `ID`
    * a `user` of type `User`
-   * a `statType` of type `String` ("artists", "releases", "release-groups", "recordings")
+   * a `statType` of type `String` ("artists", "releases", "release-groups", "recordings", "activity")
    * a `timeRange` of type `String` ("all_time", "week", "month", "quarter_year", "half_year", "year")
    * a `data` of type `JSON`
    * a `lastUpdated` of type `Timestamp`
  * A set of `ListenHistory` with:
+   * an `_id` of type `ID`
    * a `user` of type `User`
    * a `listens` of type `List<JSON>`
    * a `lastFetched` of type `Timestamp`
+ * Rate limiting state:
+   * a `rateLimitRemaining` of type `Number` (requests remaining in current window)
+   * a `rateLimitResetTime` of type `Number` (Unix timestamp when rate limit resets)
 
 * **actions**:
 

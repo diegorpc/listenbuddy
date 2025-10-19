@@ -1,9 +1,9 @@
-[@implementation](implementation.md)
+---
+timestamp: 'Sat Oct 18 2025 19:08:27 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_190827.a2ba67cb.md]]'
+content_id: 5b8811cc2e14e4c077294b41fdb2f5cc47ef344e87183194af81e384718079a9
+---
 
-[@testing-concepts](../../background/testing-concepts.md)
-
-[@musicbrainz-test-data](../../background/musicbrainz-test-data.md)
-# test: MusicBrainzAPI, using the provided test mbids
 # response:
 
 Here's the test file for the `MusicBrainzAPIConcept`, adhering to the specified structure and testing guidelines.

@@ -1,6 +1,5 @@
-
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts";
+import { ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
 
 // Declare collection prefix, use concept name
@@ -14,7 +13,6 @@ const USER_AGENT = "ListenBuddy/1.0.0 (diegorpc@mit.edu)";
 
 // Generic types of this concept
 type EntityMbid = ID;
-type RelationshipType = string; // e.g., "artist-rels", "recording-rels"
 type EntityType =
   | "artist"
   | "recording"
@@ -22,33 +20,242 @@ type EntityType =
   | "release-group"
   | "work";
 
+// Detailed MusicBrainz API response types based on actual responses
+interface MBLifeSpan {
+  begin?: string | null;
+  end?: string | null;
+  ended: boolean;
+}
+
+interface MBArea {
+  id: string;
+  type?: string | null;
+  "type-id"?: string | null;
+  name: string;
+  "sort-name": string;
+  disambiguation?: string;
+  "iso-3166-1-codes"?: string[];
+  "life-span"?: MBLifeSpan;
+}
+
+interface MBArtist {
+  id: string;
+  name: string;
+  "sort-name": string;
+  disambiguation?: string;
+  type?: string;
+  "type-id"?: string;
+  "gender"?: string | null;
+  "gender-id"?: string | null;
+  country?: string;
+  area?: MBArea;
+  "begin-area"?: MBArea;
+  "end-area"?: MBArea | null;
+  "life-span"?: MBLifeSpan;
+  ipis?: string[];
+  isnis?: string[];
+  aliases?: MBAlias[];
+  tags?: MBTag[];
+  relations?: MBRelation[];
+  releases?: MBRelease[];
+}
+
+interface MBAlias {
+  name: string;
+  "sort-name": string;
+  type?: string;
+  "type-id"?: string;
+  locale?: string | null;
+  primary?: boolean | null;
+  "begin-date"?: string | null;
+  "end-date"?: string | null;
+}
+
+interface MBTag {
+  name: string;
+  count: number;
+}
+
+interface MBArtistCredit {
+  name: string;
+  artist?: MBArtist;
+  joinphrase?: string;
+}
+
+interface MBWork {
+  id: string;
+  title: string;
+  type?: string;
+  "type-id"?: string;
+  disambiguation?: string;
+  language?: string;
+  languages?: string[];
+  iswcs?: string[];
+  attributes?: MBWorkAttribute[];
+  relations?: MBRelation[];
+}
+
+interface MBWorkAttribute {
+  type: string;
+  "type-id": string;
+  value: string;
+}
+
+interface MBRecording {
+  id: string;
+  title: string;
+  length?: number;
+  disambiguation?: string;
+  video?: boolean;
+  "artist-credit"?: MBArtistCredit[];
+  releases?: MBRelease[];
+  isrcs?: string[];
+  tags?: MBTag[];
+  relations?: MBRelation[];
+}
+
+interface MBRelease {
+  id: string;
+  title: string;
+  status?: string;
+  "status-id"?: string;
+  date?: string;
+  country?: string;
+  disambiguation?: string;
+  barcode?: string | null;
+  "artist-credit"?: MBArtistCredit[];
+  "release-group"?: MBReleaseGroup;
+  media?: MBMedia[];
+  "label-info"?: MBLabelInfo[];
+  "cover-art-archive"?: MBCoverArtArchive;
+  relations?: MBRelation[];
+}
+
+interface MBMedia {
+  title?: string;
+  position: number;
+  format?: string;
+  "format-id"?: string;
+  "track-count": number;
+  "track-offset"?: number;
+  tracks?: MBTrack[];
+}
+
+interface MBTrack {
+  id: string;
+  position: number;
+  number: string;
+  title: string;
+  length?: number;
+  recording?: MBRecording;
+  "artist-credit"?: MBArtistCredit[];
+}
+
+interface MBReleaseGroup {
+  id: string;
+  title: string;
+  "primary-type"?: string;
+  "primary-type-id"?: string;
+  "secondary-types"?: string[];
+  "secondary-type-ids"?: string[];
+  "first-release-date"?: string;
+  disambiguation?: string;
+  "artist-credit"?: MBArtistCredit[];
+  releases?: MBRelease[];
+  tags?: MBTag[];
+  relations?: MBRelation[];
+}
+
+interface MBLabelInfo {
+  "catalog-number"?: string;
+  label?: MBLabel;
+}
+
+interface MBLabel {
+  id: string;
+  name: string;
+  "sort-name": string;
+  disambiguation?: string;
+  type?: string;
+  "type-id"?: string;
+}
+
+interface MBCoverArtArchive {
+  artwork: boolean;
+  count: number;
+  front: boolean;
+  back: boolean;
+  darkened: boolean;
+}
+
+interface MBRelation {
+  type: string;
+  "type-id"?: string;
+  "target-type": string;
+  "target-credit"?: string;
+  "source-credit"?: string;
+  direction?: string;
+  begin?: string;
+  end?: string;
+  ended?: boolean;
+  attributes?: string[];
+  "attribute-values"?: Record<string, string>;
+  "attribute-ids"?: Record<string, string>;
+  artist?: MBArtist;
+  work?: MBWork;
+  recording?: MBRecording;
+  release?: MBRelease;
+  "release-group"?: MBReleaseGroup;
+  url?: MBUrl;
+  genre?: MBGenre;
+}
+
+interface MBUrl {
+  id: string;
+  resource: string;
+}
+
+interface MBGenre {
+  id: string;
+  name: string;
+  disambiguation?: string;
+}
+
+interface MBSearchResult {
+  score: number;
+  id: string;
+  name?: string;
+  title?: string;
+  "sort-name"?: string;
+  type?: string;
+  "type-id"?: string;
+  disambiguation?: string;
+  country?: string;
+  area?: MBArea;
+  "begin-area"?: MBArea;
+  "life-span"?: MBLifeSpan;
+  isnis?: string[];
+  aliases?: MBAlias[];
+  tags?: MBTag[];
+  "artist-credit"?: MBArtistCredit[];
+}
+
 /**
  * A set of EntityCache with:
+ *   an _id of type ID (unique identifier generated by freshID)
+ *   a cacheKey of type String (full URL used for lookups)
  *   an mbid of type String (MusicBrainz ID)
  *   an entityType of type String ("artist", "recording", "release", "release-group", "work")
  *   a metadata of type JSON
  *   a lastFetched of type Timestamp
  */
 interface EntityCache {
-  _id: ID; // Combined MBID and entityType for unique ID
-  mbid: EntityMbid;
-  entityType: EntityType;
+  _id: ID; // Unique ID generated by freshID()
+  cacheKey: string; // Full URL including query params
+  mbid: EntityMbid | string | null; // Can be null for search/browse
+  entityType: EntityType | "search" | "browse";
   metadata: any;
-  lastFetched: Date;
-}
-
-/**
- * A set of RelationshipCache with:
- *   an mbid of type String
- *   a relationshipType of type String ("artist-rels", "recording-rels", "work-rels", etc.)
- *   a relationships of type List<JSON>
- *   a lastFetched of type Timestamp
- */
-interface RelationshipCache {
-  _id: ID; // Combined MBID and relationshipType for unique ID
-  mbid: EntityMbid;
-  relationshipType: RelationshipType;
-  relationships: any[];
+  relationships?: any; // For search/browse results
   lastFetched: Date;
 }
 
@@ -59,16 +266,13 @@ interface RateLimitState {
 
 export default class MusicBrainzAPIConcept {
   private entityCache: Collection<EntityCache>;
-  private relationshipCache: Collection<RelationshipCache>;
   private rateLimitState: RateLimitState;
 
-  // TTL for caches (can be adjusted)
+  // TTL for cache (can be adjusted)
   private static readonly ENTITY_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  private static readonly RELATIONSHIP_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
   constructor(private readonly db: Db) {
     this.entityCache = this.db.collection(PREFIX + "entityCache");
-    this.relationshipCache = this.db.collection(PREFIX + "relationshipCache");
     this.rateLimitState = { lastRequestTime: new Date(0) }; // Initialize to a past date
   }
 
@@ -78,8 +282,8 @@ export default class MusicBrainzAPIConcept {
    */
   private async _waitForRateLimit(): Promise<void> {
     const now = new Date();
-    const timeSinceLastRequest =
-      now.getTime() - this.rateLimitState.lastRequestTime.getTime();
+    const timeSinceLastRequest = now.getTime() -
+      this.rateLimitState.lastRequestTime.getTime();
 
     if (timeSinceLastRequest < RATE_LIMIT_DELAY_MS) {
       const delay = RATE_LIMIT_DELAY_MS - timeSinceLastRequest;
@@ -91,37 +295,36 @@ export default class MusicBrainzAPIConcept {
 
   /**
    * Internal helper to make a request to the MusicBrainz API, handling caching and rate limiting.
-   * @param path The API endpoint path (e.g., "artist/{mbid}").
-   * @param params URLSearchParams for query parameters.
-   * @param cacheCollection The MongoDB collection to use for caching (entityCache or relationshipCache).
-   * @param cacheKey The unique key to use for identifying this cached item (e.g., MBID or MBID+type).
-   * @param cacheType A string to differentiate cache entries (e.g., "artist", "recording", "artist-rels").
+   * @param entityType The type of entity or request being made.
+   * @param mbid The MusicBrainz ID (can be null for search/browse).
+   * @param requestUrl The complete URL for the API request.
+   * @param cacheCollection The MongoDB collection to use for caching.
    * @param ttlMs Time-to-live for the cache entry in milliseconds.
    * @returns The parsed JSON response or an error object.
    */
   private async _fetchAndCache<T>(
-    entityType: EntityType | RelationshipType | "search" | "browse",
+    entityType: EntityType | "search" | "browse",
     mbid: EntityMbid | string | null, // Can be null for search/browse
     requestUrl: URL,
     cacheCollection: Collection<any>,
     ttlMs: number,
   ): Promise<T | { error: string }> {
-    const cacheIdentifier = mbid
-      ? (`${mbid}-${entityType}` as ID)
-      : (`${requestUrl.toString()}` as ID); // Use URL for unique identifier for search/browse
+    // Use full URL as cache key to include query parameters (like inc=releases)
+    // This ensures different includes don't share the same cache entry
+    const cacheKey = requestUrl.toString();
 
     // 1. Check cache first
-    const cachedData = await cacheCollection.findOne({ _id: cacheIdentifier });
+    const cachedData = await cacheCollection.findOne({ cacheKey });
 
     if (cachedData) {
       if (
         new Date().getTime() - cachedData.lastFetched.getTime() <
-        ttlMs
+          ttlMs
       ) {
-        // console.log(`MusicBrainzAPI: Cache hit for ${cacheIdentifier}`);
+        // console.log(`MusicBrainzAPI: Cache hit for ${cacheKey}`);
         return cachedData.metadata || cachedData.relationships;
       } else {
-        // console.log(`MusicBrainzAPI: Cache expired for ${cacheIdentifier}`);
+        // console.log(`MusicBrainzAPI: Cache expired for ${cacheKey}`);
         // Optionally delete expired cache here to keep it clean, but usually just overwrite.
       }
     }
@@ -136,7 +339,8 @@ export default class MusicBrainzAPIConcept {
       });
 
       if (!response.ok) {
-        if (response.status === 404) {
+        await response.body?.cancel();
+        if (response.status === 404 || response.status === 400) {
           return { error: `Entity not found: ${mbid}` };
         }
         throw new Error(
@@ -147,8 +351,8 @@ export default class MusicBrainzAPIConcept {
       const data = await response.json();
 
       // 4. Cache the result
-      const newCacheEntry: any = {
-        _id: cacheIdentifier,
+      const cacheUpdate: any = {
+        cacheKey,
         lastFetched: new Date(),
       };
 
@@ -159,15 +363,15 @@ export default class MusicBrainzAPIConcept {
         entityType === "release-group" ||
         entityType === "work"
       ) {
-        Object.assign(newCacheEntry, {
+        Object.assign(cacheUpdate, {
           mbid: mbid,
           entityType: entityType,
           metadata: data,
         });
-      } else { // This handles relationship types, search, and browse
-        Object.assign(newCacheEntry, {
+      } else { // This handles search and browse
+        Object.assign(cacheUpdate, {
           mbid: mbid, // Can be null for search/browse but still useful
-          relationshipType: entityType, // Reusing field for generic type
+          entityType: entityType, // Store the type for reference
           metadata: data, // Store full response for search/browse
           relationships: data.relations || data.artists || data.recordings ||
             data.releases || data["release-groups"] || data.works, // Extract specific lists if available
@@ -175,21 +379,28 @@ export default class MusicBrainzAPIConcept {
       }
 
       await cacheCollection.updateOne(
-        { _id: cacheIdentifier },
-        { $set: newCacheEntry },
+        { cacheKey },
+        {
+          $set: cacheUpdate,
+          $setOnInsert: { _id: freshID() }, // Generate ID only on first insert
+        },
         { upsert: true },
       );
-      // console.log(`MusicBrainzAPI: Cached ${cacheIdentifier}`);
+      // console.log(`MusicBrainzAPI: Cached ${cacheKey}`);
 
       // Return the actual data part for different request types
       if (entityType === "search" || entityType === "browse") {
-        return newCacheEntry.metadata as T;
+        return cacheUpdate.metadata as T;
       }
-      return newCacheEntry.metadata || newCacheEntry.relationships as T;
+      return cacheUpdate.metadata || cacheUpdate.relationships as T;
     } catch (error: any) {
-      console.error(`MusicBrainzAPI: Error fetching ${requestUrl.toString()}:`,
-        error);
-      return { error: `Failed to fetch from MusicBrainz API: ${error.message}` };
+      console.error(
+        `MusicBrainzAPI: Error fetching ${requestUrl.toString()}:`,
+        error,
+      );
+      return {
+        error: `Failed to fetch from MusicBrainz API: ${error.message}`,
+      };
     }
   }
 
@@ -202,7 +413,7 @@ export default class MusicBrainzAPIConcept {
    */
   async lookupArtist(
     { mbid, includes = [] }: { mbid: EntityMbid; includes?: string[] },
-  ): Promise<{ artist: any } | { error: string }> {
+  ): Promise<{ artist?: MBArtist; error?: string }> {
     if (!mbid) return { error: "MBID is required." };
 
     const url = new URL(`${MUSICBRAINZ_API_BASE_URL}artist/${mbid}`);
@@ -219,6 +430,7 @@ export default class MusicBrainzAPIConcept {
       MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
+    // MusicBrainz API returns entity data directly at the root
     return { artist: result };
   }
 
@@ -230,7 +442,7 @@ export default class MusicBrainzAPIConcept {
    */
   async lookupRecording(
     { mbid, includes = [] }: { mbid: EntityMbid; includes?: string[] },
-  ): Promise<{ recording: any } | { error: string }> {
+  ): Promise<{ recording?: MBRecording; error?: string }> {
     if (!mbid) return { error: "MBID is required." };
 
     const url = new URL(`${MUSICBRAINZ_API_BASE_URL}recording/${mbid}`);
@@ -247,6 +459,7 @@ export default class MusicBrainzAPIConcept {
       MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
+    // MusicBrainz API returns entity data directly at the root
     return { recording: result };
   }
 
@@ -258,7 +471,7 @@ export default class MusicBrainzAPIConcept {
    */
   async lookupRelease(
     { mbid, includes = [] }: { mbid: EntityMbid; includes?: string[] },
-  ): Promise<{ release: any } | { error: string }> {
+  ): Promise<{ release?: MBRelease; error?: string }> {
     if (!mbid) return { error: "MBID is required." };
 
     const url = new URL(`${MUSICBRAINZ_API_BASE_URL}release/${mbid}`);
@@ -275,6 +488,7 @@ export default class MusicBrainzAPIConcept {
       MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
+    // MusicBrainz API returns entity data directly at the root
     return { release: result };
   }
 
@@ -286,7 +500,7 @@ export default class MusicBrainzAPIConcept {
    */
   async lookupReleaseGroup(
     { mbid, includes = [] }: { mbid: EntityMbid; includes?: string[] },
-  ): Promise<{ releaseGroup: any } | { error: string }> {
+  ): Promise<{ releaseGroup?: MBReleaseGroup; error?: string }> {
     if (!mbid) return { error: "MBID is required." };
 
     const url = new URL(`${MUSICBRAINZ_API_BASE_URL}release-group/${mbid}`);
@@ -303,6 +517,7 @@ export default class MusicBrainzAPIConcept {
       MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
+    // MusicBrainz API returns entity data directly at the root
     return { releaseGroup: result };
   }
 
@@ -314,7 +529,7 @@ export default class MusicBrainzAPIConcept {
    */
   async lookupWork(
     { mbid, includes = [] }: { mbid: EntityMbid; includes?: string[] },
-  ): Promise<{ work: any } | { error: string }> {
+  ): Promise<{ work?: MBWork; error?: string }> {
     if (!mbid) return { error: "MBID is required." };
 
     const url = new URL(`${MUSICBRAINZ_API_BASE_URL}work/${mbid}`);
@@ -331,54 +546,8 @@ export default class MusicBrainzAPIConcept {
       MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
+    // MusicBrainz API returns entity data directly at the root
     return { work: result };
-  }
-
-  /**
-   * getEntityRelationships(mbid: String, entityType: String, relationshipTypes: List<String>): (relationships: List<Relationship>)
-   *
-   * requires: mbid is valid, entityType is one of the supported entity types, relationshipTypes contains valid relationship types
-   * effect: fetches all relationships of specified types for an entity. Returns list of relationships with target entities, relationship type, and attributes.
-   * Used to find similar artists, cover versions, samples, etc.
-   */
-  async getEntityRelationships(
-    { mbid, entityType, relationshipTypes = [] }: {
-      mbid: EntityMbid;
-      entityType: EntityType;
-      relationshipTypes?: string[];
-    },
-  ): Promise<{ relationships: any[] } | { error: string }> {
-    if (!mbid) return { error: "MBID is required." };
-    if (!["artist", "recording", "release", "release-group", "work"].includes(entityType)) {
-      return { error: "Invalid entityType." };
-    }
-    // relationshipTypes are implicitly validated by what the MB API accepts in 'inc'
-
-    const url = new URL(`${MUSICBRAINZ_API_BASE_URL}${entityType}/${mbid}`);
-    url.searchParams.set("fmt", "json");
-    if (relationshipTypes.length > 0) {
-      url.searchParams.set("inc", relationshipTypes.join("+"));
-    } else {
-      // If no specific relationship types are requested, we might include a common one or rely on default
-      // For general relationships, we might need to check if the entity itself already includes them.
-      // This action is distinct from lookup, so it implies fetching specific relationship data.
-      // For now, if no types are given, we'll try to get all relations, which means a separate call.
-      // However, the MB API "relations" include parameter usually covers most generic relationships.
-      url.searchParams.set("inc", "url-rels+artist-rels+recording-rels+work-rels+label-rels");
-    }
-
-    // The _fetchAndCache will handle parsing the 'relations' array from the result
-    const result = await this._fetchAndCache<any>(
-      `${entityType}-rels` as RelationshipType, // Use a specific cache key for relationships
-      mbid,
-      url,
-      this.relationshipCache,
-      MusicBrainzAPIConcept.RELATIONSHIP_CACHE_TTL_MS,
-    );
-
-    if ("error" in result) return result;
-    // MusicBrainz API returns relationships under the 'relations' key in the entity object
-    return { relationships: result.relations || [] };
   }
 
   /**
@@ -393,9 +562,15 @@ export default class MusicBrainzAPIConcept {
       entityType: EntityType;
       limit?: number;
     },
-  ): Promise<{ results: any[] } | { error: string }> {
-    if (!query || query.trim() === "") return { error: "Query cannot be empty." };
-    if (!["artist", "recording", "release", "release-group", "work"].includes(entityType)) {
+  ): Promise<{ results?: MBSearchResult[]; error?: string }> {
+    if (!query || query.trim() === "") {
+      return { error: "Query cannot be empty." };
+    }
+    if (
+      !["artist", "recording", "release", "release-group", "work"].includes(
+        entityType,
+      )
+    ) {
       return { error: "Invalid entityType." };
     }
     if (limit <= 0) return { error: "Limit must be positive." };
@@ -416,7 +591,9 @@ export default class MusicBrainzAPIConcept {
 
     // MusicBrainz search results are typically under an array key matching the entity type (e.g., 'artists', 'recordings')
     // Handle special case for release-group which becomes release-groups in the API response
-    const entityKey = entityType === "release-group" ? "release-groups" : `${entityType}s`;
+    const entityKey = entityType === "release-group"
+      ? "release-groups"
+      : `${entityType}s`;
     return { results: result[entityKey] || [] };
   }
 
@@ -434,12 +611,26 @@ export default class MusicBrainzAPIConcept {
       limit?: number;
       offset?: number;
     },
-  ): Promise<{ results: any[] } | { error: string }> {
+  ): Promise<
+    {
+      results?:
+        (MBArtist | MBRecording | MBRelease | MBReleaseGroup | MBWork)[];
+      error?: string;
+    }
+  > {
     if (!linkedMbid) return { error: "linkedMbid is required." };
-    if (!["artist", "recording", "release", "release-group", "work"].includes(entityType)) {
+    if (
+      !["artist", "recording", "release", "release-group", "work"].includes(
+        entityType,
+      )
+    ) {
       return { error: "Invalid entityType." };
     }
-    if (!["artist", "recording", "release", "release-group", "work"].includes(linkedEntity)) {
+    if (
+      !["artist", "recording", "release", "release-group", "work"].includes(
+        linkedEntity,
+      )
+    ) {
       return { error: "Invalid linkedEntity type." };
     }
     if (limit < 0 || offset < 0) {
@@ -462,53 +653,156 @@ export default class MusicBrainzAPIConcept {
     if ("error" in result) return result;
 
     // Handle special case for release-group which becomes release-groups in the API response
-    const entityKey = entityType === "release-group" ? "release-groups" : `${entityType}s`;
+    const entityKey = entityType === "release-group"
+      ? "release-groups"
+      : `${entityType}s`;
     return { results: result[entityKey] || [] };
   }
 
   /**
-   * getArtistSimilarities(artistMbid: String): (similarArtists: List<Artist>)
+   * getEntityGenres(mbid: String, entityType: String): (genres: List<Genre>)
+   *
+   * requires: mbid is valid, entityType is supported
+   * effect: fetches genres (and tags) for an entity and returns them sorted by count/relevance.
+   * Useful for finding similar entities based on genre overlap.
+   */
+  async getEntityGenres(
+    { mbid, entityType }: { mbid: EntityMbid; entityType: EntityType },
+  ): Promise<{ genres?: MBTag[]; tags?: MBTag[]; error?: string }> {
+    if (!mbid) return { error: "MBID is required." };
+    if (
+      !["artist", "recording", "release", "release-group"].includes(
+        entityType,
+      )
+    ) {
+      return { error: "Invalid entityType for genre lookup." };
+    }
+
+    const url = new URL(`${MUSICBRAINZ_API_BASE_URL}${entityType}/${mbid}`);
+    url.searchParams.set("fmt", "json");
+    url.searchParams.set("inc", "genres+tags");
+
+    const result = await this._fetchAndCache<any>(
+      entityType,
+      mbid,
+      url,
+      this.entityCache,
+      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+    );
+
+    if ("error" in result) return result;
+
+    // Extract and sort genres and tags by count (descending)
+    const genres = (result.genres || []).sort(
+      (a: MBTag, b: MBTag) => b.count - a.count,
+    );
+    const tags = (result.tags || []).sort(
+      (a: MBTag, b: MBTag) => b.count - a.count,
+    );
+
+    return { genres, tags };
+  }
+
+  /**
+   * getArtistSimilarities(artistMbid: String, limit: Number): (similarArtists: List<Artist>)
    *
    * requires: artistMbid is valid
-   * effect: fetches artists with relationships to the given artist (collaborations, member-of, similar-to)
-   * and returns them as potential similar artists for recommendations.
+   * effect: finds similar artists based on genre/tag overlap. Fetches the artist's top genres,
+   * searches for other artists with those genres, and returns a scored list of similar artists.
+   * This is more useful for recommendations than relationship-based approaches.
    */
   async getArtistSimilarities(
-    { artistMbid }: { artistMbid: EntityMbid },
-  ): Promise<{ similarArtists: any[] } | { error: string }> {
+    { artistMbid, limit = 10 }: { artistMbid: EntityMbid; limit?: number },
+  ): Promise<
+    {
+      similarArtists?: Array<{
+        mbid: string;
+        name: string;
+        score: number;
+        sharedGenres: string[];
+      }>;
+      error?: string;
+    }
+  > {
     if (!artistMbid) return { error: "artistMbid is required." };
 
-    // Fetch artist with relationships
-    const artistResult = await this.lookupArtist({
+    // Step 1: Get the artist's genres and tags
+    const genreResult = await this.getEntityGenres({
       mbid: artistMbid,
-      includes: ["artist-rels"],
+      entityType: "artist",
     });
 
-    if ("error" in artistResult) return artistResult;
+    if ("error" in genreResult) return genreResult;
 
-    const artist = artistResult.artist;
-    const similarArtists: any[] = [];
+    const genres = genreResult.genres || [];
+    const tags = genreResult.tags || [];
 
-    // Filter relationships to find 'similar-to', 'collaborated-with', 'member-of', etc.
-    if (artist.relations) {
-      for (const rel of artist.relations) {
-        // Example: filter for specific relationship types that imply similarity or connection
-        if (
-          ["member of", "collaboration", "similar to"].includes(
-            rel.type.toLowerCase(),
-          ) && rel.target_type === "artist"
-        ) {
-          similarArtists.push({
-            mbid: rel.artist.id,
-            name: rel.artist.name,
-            type: rel.type,
-            direction: rel.direction,
+    // Combine genres and tags, prioritizing genres (they're curated)
+    const allTags = [...genres, ...tags];
+
+    if (allTags.length === 0) {
+      return {
+        similarArtists: [],
+        error:
+          "No genres or tags found for this artist. Cannot compute similarities.",
+      };
+    }
+
+    // Step 2: Take top genres/tags (weighted by count)
+    const topGenres = allTags.slice(0, 5).map((g) => g.name);
+
+    // Step 3: Search for artists with similar genres
+    // We'll search for each top genre and aggregate results
+    const artistCandidates = new Map<
+      string,
+      { name: string; genres: Set<string>; score: number }
+    >();
+
+    for (const genre of topGenres) {
+      // Search for artists with this genre in their name/tags
+      // Note: MusicBrainz search doesn't support direct genre filtering,
+      // so we search by tag name and filter results
+      const searchResult = await this.searchEntities({
+        query: `tag:${genre}`,
+        entityType: "artist",
+        limit: 20,
+      });
+
+      if ("error" in searchResult || !searchResult.results) continue;
+
+      // For each artist found, check their actual genres
+      for (const artistResult of searchResult.results) {
+        // Skip the original artist
+        if (artistResult.id === artistMbid) continue;
+
+        if (!artistCandidates.has(artistResult.id)) {
+          artistCandidates.set(artistResult.id, {
+            name: artistResult.name || "Unknown",
+            genres: new Set(),
+            score: 0,
           });
         }
+
+        const candidate = artistCandidates.get(artistResult.id)!;
+        candidate.genres.add(genre);
+        // Score is based on number of shared genres and the genre's weight
+        const genreWeight = allTags.find((t) => t.name === genre)?.count || 1;
+        candidate.score += genreWeight;
       }
     }
 
-    return { similarArtists: similarArtists };
+    // Step 4: Sort by score and format results
+    const similarArtists = Array.from(artistCandidates.entries())
+      .map(([mbid, data]) => ({
+        mbid,
+        name: data.name,
+        score: data.score,
+        sharedGenres: Array.from(data.genres),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return { similarArtists };
   }
 
   /**
@@ -520,36 +814,60 @@ export default class MusicBrainzAPIConcept {
    */
   async getRecordingWorks(
     { recordingMbid }: { recordingMbid: EntityMbid },
-  ): Promise<{ works: any[] } | { error: string }> {
+  ): Promise<{ works?: any[]; error?: string }> {
     if (!recordingMbid) return { error: "recordingMbid is required." };
 
     const recordingResult = await this.lookupRecording({
       mbid: recordingMbid,
-      includes: ["work-rels", "artist-rels"],
+      includes: ["work-rels"],
     });
 
     if ("error" in recordingResult) return recordingResult;
 
     const recording = recordingResult.recording;
+    if (!recording) return { error: "Recording data not found." };
     const associatedWorks: any[] = [];
 
     if (recording.relations) {
       for (const rel of recording.relations) {
-        if (rel.type === "performance" && rel.target_type === "work") {
+        if (
+          rel.type === "performance" && rel["target-type"] === "work" &&
+          rel.work
+        ) {
+          // Fetch full work details with artist relationships
+          const workResult = await this.lookupWork({
+            mbid: rel.work.id as ID,
+            includes: ["artist-rels"],
+          });
+
+          if ("error" in workResult) continue; // Skip works that fail to fetch
+
+          const workData = workResult.work;
+          if (!workData) continue;
+          const artists: any[] = [];
+
+          // Extract composer and lyricist relationships from work
+          if (workData.relations) {
+            for (const wrel of workData.relations) {
+              if (
+                wrel["target-type"] === "artist" &&
+                ["composer", "lyricist"].includes(wrel.type) &&
+                wrel.artist
+              ) {
+                artists.push({
+                  mbid: wrel.artist.id,
+                  name: wrel.artist.name,
+                  type: wrel.type,
+                });
+              }
+            }
+          }
+
           const work = {
-            mbid: rel.work.id,
-            title: rel.work.title,
-            type: rel.work.type,
-            // You can fetch work details separately if more info is needed
-            // For now, extract direct artist relations from the work if available in the same call
-            artists: rel.work.relations?.filter((wrel: any) =>
-              wrel.target_type === "artist" &&
-              ["composer", "lyricist"].includes(wrel.type)
-            ).map((wrel: any) => ({
-              mbid: wrel.artist.id,
-              name: wrel.artist.name,
-              type: wrel.type,
-            })) || [],
+            mbid: workData.id,
+            title: workData.title,
+            type: workData.type,
+            artists: artists,
           };
           associatedWorks.push(work);
         }
@@ -560,6 +878,182 @@ export default class MusicBrainzAPIConcept {
   }
 
   /**
+   * getSimilarRecordings(recordingMbid: String, limit: Number): (similarRecordings: List<Recording>)
+   *
+   * requires: recordingMbid is valid
+   * effect: finds similar recordings based on genre/tag overlap. Returns a scored list of similar recordings.
+   */
+  async getSimilarRecordings(
+    { recordingMbid, limit = 10 }: {
+      recordingMbid: EntityMbid;
+      limit?: number;
+    },
+  ): Promise<
+    {
+      similarRecordings?: Array<{
+        mbid: string;
+        title: string;
+        score: number;
+        sharedGenres: string[];
+      }>;
+      error?: string;
+    }
+  > {
+    if (!recordingMbid) return { error: "recordingMbid is required." };
+
+    const genreResult = await this.getEntityGenres({
+      mbid: recordingMbid,
+      entityType: "recording",
+    });
+
+    if ("error" in genreResult) return genreResult;
+
+    const genres = genreResult.genres || [];
+    const tags = genreResult.tags || [];
+    const allTags = [...genres, ...tags];
+
+    if (allTags.length === 0) {
+      return {
+        similarRecordings: [],
+        error: "No genres or tags found for this recording.",
+      };
+    }
+
+    const topGenres = allTags.slice(0, 5).map((g) => g.name);
+    const recordingCandidates = new Map<
+      string,
+      { title: string; genres: Set<string>; score: number }
+    >();
+
+    for (const genre of topGenres) {
+      const searchResult = await this.searchEntities({
+        query: `tag:${genre}`,
+        entityType: "recording",
+        limit: 20,
+      });
+
+      if ("error" in searchResult || !searchResult.results) continue;
+
+      for (const recordingResult of searchResult.results) {
+        if (recordingResult.id === recordingMbid) continue;
+
+        if (!recordingCandidates.has(recordingResult.id)) {
+          recordingCandidates.set(recordingResult.id, {
+            title: recordingResult.title || "Unknown",
+            genres: new Set(),
+            score: 0,
+          });
+        }
+
+        const candidate = recordingCandidates.get(recordingResult.id)!;
+        candidate.genres.add(genre);
+        const genreWeight = allTags.find((t) => t.name === genre)?.count || 1;
+        candidate.score += genreWeight;
+      }
+    }
+
+    const similarRecordings = Array.from(recordingCandidates.entries())
+      .map(([mbid, data]) => ({
+        mbid,
+        title: data.title,
+        score: data.score,
+        sharedGenres: Array.from(data.genres),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return { similarRecordings };
+  }
+
+  /**
+   * getSimilarReleaseGroups(releaseGroupMbid: String, limit: Number): (similarReleaseGroups: List<ReleaseGroup>)
+   *
+   * requires: releaseGroupMbid is valid
+   * effect: finds similar release groups (albums) based on genre/tag overlap. Returns a scored list.
+   */
+  async getSimilarReleaseGroups(
+    { releaseGroupMbid, limit = 10 }: {
+      releaseGroupMbid: EntityMbid;
+      limit?: number;
+    },
+  ): Promise<
+    {
+      similarReleaseGroups?: Array<{
+        mbid: string;
+        title: string;
+        score: number;
+        sharedGenres: string[];
+      }>;
+      error?: string;
+    }
+  > {
+    if (!releaseGroupMbid) return { error: "releaseGroupMbid is required." };
+
+    const genreResult = await this.getEntityGenres({
+      mbid: releaseGroupMbid,
+      entityType: "release-group",
+    });
+
+    if ("error" in genreResult) return genreResult;
+
+    const genres = genreResult.genres || [];
+    const tags = genreResult.tags || [];
+    const allTags = [...genres, ...tags];
+
+    if (allTags.length === 0) {
+      return {
+        similarReleaseGroups: [],
+        error: "No genres or tags found for this release group.",
+      };
+    }
+
+    const topGenres = allTags.slice(0, 5).map((g) => g.name);
+    const releaseGroupCandidates = new Map<
+      string,
+      { title: string; genres: Set<string>; score: number }
+    >();
+
+    for (const genre of topGenres) {
+      const searchResult = await this.searchEntities({
+        query: `tag:${genre}`,
+        entityType: "release-group",
+        limit: 20,
+      });
+
+      if ("error" in searchResult || !searchResult.results) continue;
+
+      for (const rgResult of searchResult.results) {
+        if (rgResult.id === releaseGroupMbid) continue;
+
+        if (!releaseGroupCandidates.has(rgResult.id)) {
+          releaseGroupCandidates.set(rgResult.id, {
+            title: rgResult.title || "Unknown",
+            genres: new Set(),
+            score: 0,
+          });
+        }
+
+        const candidate = releaseGroupCandidates.get(rgResult.id)!;
+        candidate.genres.add(genre);
+        const genreWeight = allTags.find((t) => t.name === genre)?.count || 1;
+        candidate.score += genreWeight;
+      }
+    }
+
+    const similarReleaseGroups = Array.from(releaseGroupCandidates.entries())
+      .map(([mbid, data]) => ({
+        mbid,
+        title: data.title,
+        score: data.score,
+        sharedGenres: Array.from(data.genres),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+
+    return { similarReleaseGroups };
+  }
+
+  /**
    * getCoverArt(releaseMbid: String): (coverArtUrl: String)
    *
    * requires: releaseMbid is valid
@@ -567,7 +1061,7 @@ export default class MusicBrainzAPIConcept {
    */
   async getCoverArt(
     { releaseMbid }: { releaseMbid: EntityMbid },
-  ): Promise<{ coverArtUrl: string } | { error: string }> {
+  ): Promise<{ coverArtUrl?: string; error?: string }> {
     if (!releaseMbid) return { error: "releaseMbid is required." };
 
     const url = new URL(`${COVER_ART_API_BASE_URL}${releaseMbid}/front`);
@@ -584,16 +1078,21 @@ export default class MusicBrainzAPIConcept {
         // If a "front" image exists, return its URL.
         // The actual image is at the same URL if GET is used.
         return { coverArtUrl: url.toString() };
-      } else if (response.status === 404) {
-        return { error: "Cover art not found for this release." };
       } else {
-        throw new Error(
-          `Cover Art Archive error: ${response.status} ${response.statusText}`,
-        );
+        await response.body?.cancel();
+        if (response.status === 404) {
+          return { error: "Cover art not found for this release." };
+        } else {
+          throw new Error(
+            `Cover Art Archive error: ${response.status} ${response.statusText}`,
+          );
+        }
       }
     } catch (error: any) {
-      console.error(`MusicBrainzAPI: Error fetching cover art ${url.toString()}:`,
-        error);
+      console.error(
+        `MusicBrainzAPI: Error fetching cover art ${url.toString()}:`,
+        error,
+      );
       return { error: `Failed to fetch cover art: ${error.message}` };
     }
   }
@@ -605,13 +1104,13 @@ export default class MusicBrainzAPIConcept {
    * effect: removes cached entity and relationship data for the specified MBID,
    * forcing fresh API calls on next request.
    */
-  async clearCache({ mbid }: { mbid: EntityMbid }): Promise<Empty | { error: string }> {
+  async clearCache(
+    { mbid }: { mbid: EntityMbid },
+  ): Promise<{ error?: string }> {
     if (!mbid) return { error: "MBID is required." };
 
-    // Delete entries from entity cache where mbid matches
-    await this.entityCache.deleteMany({ mbid: mbid });
-    // Delete entries from relationship cache where mbid matches
-    await this.relationshipCache.deleteMany({ mbid: mbid });
+    // Delete entries from entity cache where cacheKey contains the mbid
+    await this.entityCache.deleteMany({ cacheKey: { $regex: mbid } as any });
 
     return {};
   }
