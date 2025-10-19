@@ -1,0 +1,366 @@
+[@implementation](implementation.md)
+
+[@testing-concepts](../../background/testing-concepts.md)
+# test: User
+# response:
+
+```typescript
+// file: src/User/UserConcept.test.ts
+
+import {
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+  assertObjectMatch,
+} from "jsr:@std/assert";
+import { testDb } from "@utils/database.ts";
+import UserConcept from "./UserConcept.ts";
+import { ID } from "@utils/types.ts";
+import { Buffer } from "node:buffer";
+
+const OUTPUT = true; // for verbose debugging
+
+// Helper function to hash passwords for direct DB comparison if needed (though we rely on comparePassword)
+async function hashPasswordForTest(
+  password: string,
+  salt: string,
+): Promise<string> {
+  const { scrypt } = await import("node:crypto");
+  const { promisify } = await import("node:util");
+  const scryptAsync = promisify(scrypt);
+  const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
+  return salt + "." + derivedKey.toString("hex");
+}
+
+Deno.test("UserConcept", async (t) => {
+  const [db, client] = await testDb();
+  const userConcept = new UserConcept(db);
+
+  await t.step("createUser", async (t_step) => {
+    await t_step.step("should successfully create a new user", async () => {
+      const result = await userConcept.createUser({
+        username: "testuser1",
+        password: "password123",
+      });
+      if (OUTPUT) console.log(result);
+      assertExists(result.user);
+      assertNotEquals(result.user, "", "User ID should not be empty");
+      assertEquals(
+        result.error,
+        undefined,
+        "No error expected for successful creation",
+      );
+
+      const createdUser = await db.collection("User.users").findOne({
+        _id: result.user,
+      });
+      assertExists(createdUser, "User should exist in the database");
+      assertEquals(createdUser?.username, "testuser1");
+      assertExists(createdUser?.passwordHash);
+      assertExists(createdUser?.createdAt);
+    });
+
+    await t_step.step(
+      "should return an error if username is already taken",
+      async () => {
+        // Create user first
+        await userConcept.createUser({
+          username: "existinguser",
+          password: "password123",
+        });
+
+        const result = await userConcept.createUser({
+          username: "existinguser",
+          password: "anotherpassword",
+        });
+        assertEquals(
+          result.user,
+          undefined,
+          "No user ID expected for failed creation",
+        );
+        assertEquals(
+          result.error,
+          "Username already taken.",
+          "Error message should match",
+        );
+      },
+    );
+
+    await t_step.step("should return an error for empty username", async () => {
+      const result = await userConcept.createUser({
+        username: "",
+        password: "password123",
+      });
+      if (OUTPUT) console.log(result);
+      assertEquals(result.user, undefined);
+      assertEquals(result.error, "Username and password cannot be empty.");
+    });
+
+    await t_step.step("should return an error for empty password", async () => {
+      const result = await userConcept.createUser({
+        username: "userwithnopass",
+        password: "",
+      });
+      if (OUTPUT) console.log(result);
+      assertEquals(result.user, undefined);
+      assertEquals(result.error, "Username and password cannot be empty.");
+    });
+  });
+
+  await t.step("associateToken", async (t_step) => {
+    const { user } = await userConcept.createUser({
+      username: "tokenuser",
+      password: "tokenpassword",
+    });
+    const userId = user!;
+
+    await t_step.step(
+      "should successfully associate a scrobble token and ListenBrainz name",
+      async () => {
+        const scrobbleToken = "valid_scrobble_token_123";
+        const listenBrainzName = "listenbuddy_user";
+
+        const result = await userConcept.associateToken({
+          user: userId,
+          scrobbleToken,
+          listenBrainzName,
+        });
+
+        assertExists(result.listenBrainzName);
+        assertEquals(result.listenBrainzName, listenBrainzName);
+        assertEquals(result.error, undefined);
+
+        const updatedUser = await db.collection("User.users").findOne({
+          _id: userId,
+        });
+        assertEquals(updatedUser?.scrobbleToken, scrobbleToken);
+        assertEquals(updatedUser?.listenBrainzName, listenBrainzName);
+      },
+    );
+
+    await t_step.step(
+      "should return an error if user does not exist",
+      async () => {
+        const result = await userConcept.associateToken({
+          user: "nonexistentuser" as ID,
+          scrobbleToken: "token",
+          listenBrainzName: "name",
+        });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.listenBrainzName, undefined);
+        assertEquals(result.error, "User not found.");
+      },
+    );
+
+    await t_step.step(
+      "should return an error for empty scrobbleToken",
+      async () => {
+        const result = await userConcept.associateToken({
+          user: userId,
+          scrobbleToken: "",
+          listenBrainzName: "name",
+        });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.listenBrainzName, undefined);
+        assertEquals(
+          result.error,
+          "User ID, scrobbleToken, and listenBrainzName cannot be empty.",
+        );
+      },
+    );
+
+    await t_step.step(
+      "should return an error for empty listenBrainzName",
+      async () => {
+        const result = await userConcept.associateToken({
+          user: userId,
+          scrobbleToken: "token",
+          listenBrainzName: "",
+        });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.listenBrainzName, undefined);
+        assertEquals(
+          result.error,
+          "User ID, scrobbleToken, and listenBrainzName cannot be empty.",
+        );
+      },
+    );
+  });
+
+  await t.step("startSession", async (t_step) => {
+    const username = "loginuser";
+    const password = "loginpassword";
+
+    // Create user before running nested steps
+    const { user } = await userConcept.createUser({ username, password });
+    const userId = user!;
+
+    await t_step.step(
+      "should successfully authenticate an existing user",
+      async () => {
+        const result = await userConcept.startSession({ username, password });
+        if (OUTPUT) console.log(result);
+        assertExists(result.user);
+        assertEquals(result.user, userId);
+        assertEquals(result.error, undefined);
+      },
+    );
+
+    await t_step.step(
+      "should return an error for incorrect password",
+      async () => {
+        const result = await userConcept.startSession({
+          username,
+          password: "wrongpassword",
+        });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.user, undefined);
+        assertEquals(result.error, "Invalid username or password.");
+      },
+    );
+
+    await t_step.step(
+      "should return an error for non-existent username",
+      async () => {
+        const result = await userConcept.startSession({
+          username: "nonexistentuser",
+          password: "anypassword",
+        });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.user, undefined);
+        assertEquals(result.error, "Invalid username or password.");
+      },
+    );
+
+    await t_step.step("should return an error for empty username", async () => {
+      const result = await userConcept.startSession({ username: "", password });
+      if (OUTPUT) console.log(result);
+      assertEquals(result.user, undefined);
+      assertEquals(result.error, "Username and password cannot be empty.");
+    });
+
+    await t_step.step("should return an error for empty password", async () => {
+      const result = await userConcept.startSession({ username, password: "" });
+      if (OUTPUT) console.log(result);
+      assertEquals(result.user, undefined);
+      assertEquals(result.error, "Username and password cannot be empty.");
+    });
+  });
+
+  await t.step("endSession", async (t_step) => {
+    // Create user before running nested steps
+    const { user } = await userConcept.createUser({
+      username: "logoutuser",
+      password: "logoutpassword",
+    });
+    const userId = user!;
+
+    await t_step.step(
+      "should successfully signal the end of a session for an existing user",
+      async () => {
+        const result = await userConcept.endSession({ user: userId });
+        if (OUTPUT) console.log(result);
+        assertObjectMatch(result, {}); // Expecting an empty object on success
+        assertEquals(result.error, undefined);
+      },
+    );
+
+    await t_step.step(
+      "should return an error if user does not exist",
+      async () => {
+        const result = await userConcept.endSession({
+          user: "nonexistentuser" as ID,
+        });
+        if (OUTPUT) console.log(result);
+        assertExists(result.error);
+        assertEquals(result.error, "User not found.");
+      },
+    );
+
+    await t_step.step("should return an error for empty user ID", async () => {
+      const result = await userConcept.endSession({ user: "" as ID });
+      if (OUTPUT) console.log(result);
+      assertExists(result.error);
+      assertEquals(result.error, "User ID cannot be empty.");
+    });
+  });
+
+  await t.step(
+    "Principle Trace: User gives token to store for their session and execute api calls",
+    async () => {
+      // 1. Create User
+      const createUserResult = await userConcept.createUser({
+        username: "principleuser",
+        password: "principlepassword",
+      });
+      assertExists(createUserResult.user, "Principle: User creation failed.");
+      const userId = createUserResult.user!;
+
+      // 2. Associate Token
+      const scrobbleToken = "test_scrobble_token_for_principle";
+      const listenBrainzName = "principle_lb_user";
+      const associateTokenResult = await userConcept.associateToken({
+        user: userId,
+        scrobbleToken,
+        listenBrainzName,
+      });
+      assertExists(
+        associateTokenResult.listenBrainzName,
+        "Principle: Token association failed.",
+      );
+      assertEquals(
+        associateTokenResult.listenBrainzName,
+        listenBrainzName,
+        "Principle: Incorrect ListenBrainz name.",
+      );
+
+      const userAfterAssociation = await db.collection("User.users").findOne({
+        _id: userId,
+      });
+      assertEquals(
+        userAfterAssociation?.scrobbleToken,
+        scrobbleToken,
+        "Principle: Scrobble token not stored.",
+      );
+      assertEquals(
+        userAfterAssociation?.listenBrainzName,
+        listenBrainzName,
+        "Principle: ListenBrainz name not stored.",
+      );
+
+      // 3. Start Session (authenticate)
+      const startSessionResult = await userConcept.startSession({
+        username: "principleuser",
+        password: "principlepassword",
+      });
+      if (OUTPUT) console.log(startSessionResult);
+      assertExists(
+        startSessionResult.user,
+        "Principle: Session start (authentication) failed.",
+      );
+      assertEquals(
+        startSessionResult.user,
+        userId,
+        "Principle: Authenticated user ID mismatch.",
+      );
+
+      // At this point, the user is authenticated, and their ListenBrainz token is stored.
+      // In a real application, other concepts (like ListenBrainzAPI) would now use this stored token
+      // to make API calls, fulfilling "execute api calls".
+      // The `User` concept itself doesn't make API calls directly, but it provides the necessary data.
+
+      // 4. End Session
+      const endSessionResult = await userConcept.endSession({ user: userId });
+      if (OUTPUT) console.log(endSessionResult);
+      assertObjectMatch(endSessionResult, {}, "Principle: Session end failed.");
+      assertEquals(
+        endSessionResult.error,
+        undefined,
+        "Principle: Session end reported an error.",
+      );
+    },
+  );
+
+  await client.close();
+});
+```

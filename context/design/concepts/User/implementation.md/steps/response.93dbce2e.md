@@ -1,14 +1,9 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
+---
+timestamp: 'Sat Oct 18 2025 23:04:12 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_230412.88d9fae5.md]]'
+content_id: 93dbce2e0211c1c51be6ff3ea60f400f98d2e819246debc56c68b7a3c92dd7a5
+---
 
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@User](User.md)
-
-# implement: User
 # response:
 
 Here's the TypeScript implementation for the `User` concept, following the provided guidelines and addressing the nuance of `associateToken` for concept independence.
@@ -16,49 +11,15 @@ Here's the TypeScript implementation for the `User` concept, following the provi
 The `associateToken` action has been adjusted to accept `listenBrainzName` as an input parameter. This aligns with the "Completeness of functionality" principle, ensuring the `User` concept does not rely on direct external API calls (which are the responsibility of the `ListenBrainzAPI` concept). Instead, a higher-level synchronization mechanism would orchestrate the `ListenBrainzAPI` to validate the token and fetch the name, then pass these to `User.associateToken`.
 
 ```typescript
-// file: src/concepts/User/UserConcept.ts
+// file: src/User/UserConcept.ts
 
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts";
+import { ID, Empty } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
-import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
-import { Buffer } from "node:buffer";
-
-const scryptAsync = promisify(scrypt);
+import * as bcrypt from "npm:bcrypt"; // For password hashing
 
 // Declare collection prefix, use concept name
 const PREFIX = "User" + ".";
-
-/**
- * Hashes a password using scrypt with a random salt.
- * @param password - The plaintext password to hash
- * @returns The hashed password in the format: salt.hash
- */
-async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16).toString("hex");
-  const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
-  return salt + "." + derivedKey.toString("hex");
-}
-
-/**
- * Compares a plaintext password with a hashed password.
- * @param password - The plaintext password to verify
- * @param hashedPassword - The hashed password in the format: salt.hash
- * @returns True if the password matches, false otherwise
- */
-async function comparePassword(
-  password: string,
-  hashedPassword: string,
-): Promise<boolean> {
-  const [salt, hash] = hashedPassword.split(".");
-  if (!salt || !hash) {
-    return false;
-  }
-  const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
-  const hashBuffer = Buffer.from(hash, "hex");
-  return timingSafeEqual(derivedKey, hashBuffer);
-}
 
 /**
  * Type alias for a User identifier.
@@ -115,9 +76,7 @@ export default class UserConcept {
   async createUser(
     { username, password }: { username: string; password: string },
   ): Promise<{ user?: User; error?: string }> {
-    if (
-      !username || username.trim() === "" || !password || password.trim() === ""
-    ) {
+    if (!username || username.trim() === "" || !password || password.trim() === "") {
       return { error: "Username and password cannot be empty." };
     }
 
@@ -126,7 +85,7 @@ export default class UserConcept {
       return { error: "Username already taken." };
     }
 
-    const passwordHash = await hashPassword(password);
+    const passwordHash = await bcrypt.hash(password, 10); // Hash password with 10 salt rounds
     const newUserId = freshID();
     const newUser: UserDoc = {
       _id: newUserId,
@@ -162,30 +121,21 @@ export default class UserConcept {
       listenBrainzName: string;
     },
   ): Promise<{ listenBrainzName?: string; error?: string }> {
-    if (
-      !user || scrobbleToken.trim() === "" || listenBrainzName.trim() === ""
-    ) {
-      return {
-        error: "User ID, scrobbleToken, and listenBrainzName cannot be empty.",
-      };
+    if (!user || scrobbleToken.trim() === "" || listenBrainzName.trim() === "") {
+      return { error: "User ID, scrobbleToken, and listenBrainzName cannot be empty." };
     }
 
     const result = await this.users.findOneAndUpdate(
       { _id: user },
-      {
-        $set: {
-          scrobbleToken: scrobbleToken.trim(),
-          listenBrainzName: listenBrainzName.trim(),
-        },
-      },
+      { $set: { scrobbleToken: scrobbleToken.trim(), listenBrainzName: listenBrainzName.trim() } },
       { returnDocument: "after" }, // Get the updated document
     );
 
-    if (!result) {
+    if (!result.value) {
       return { error: "User not found." };
     }
 
-    return { listenBrainzName: result.listenBrainzName };
+    return { listenBrainzName: result.value.listenBrainzName };
   }
 
   /**
@@ -204,9 +154,7 @@ export default class UserConcept {
   async startSession(
     { username, password }: { username: string; password: string },
   ): Promise<{ user?: User; error?: string }> {
-    if (
-      !username || username.trim() === "" || !password || password.trim() === ""
-    ) {
+    if (!username || username.trim() === "" || !password || password.trim() === "") {
       return { error: "Username and password cannot be empty." };
     }
 
@@ -215,7 +163,7 @@ export default class UserConcept {
       return { error: "Invalid username or password." };
     }
 
-    const passwordMatch = await comparePassword(password, userDoc.passwordHash);
+    const passwordMatch = await bcrypt.compare(password, userDoc.passwordHash);
     if (!passwordMatch) {
       return { error: "Invalid username or password." };
     }
@@ -236,9 +184,7 @@ export default class UserConcept {
    *          is managed by other concepts (e.g., a `Session` concept) or the application layer.
    *          This acts as a trigger for those external systems via synchronization.
    */
-  async endSession(
-    { user }: { user: User },
-  ): Promise<Empty | { error: string }> {
+  async endSession({ user }: { user: User }): Promise<Empty | { error: string }> {
     if (!user) {
       return { error: "User ID cannot be empty." };
     }

@@ -1,23 +1,3 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
-
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@User](User.md)
-
-# implement: User
-# response:
-
-Here's the TypeScript implementation for the `User` concept, following the provided guidelines and addressing the nuance of `associateToken` for concept independence.
-
-The `associateToken` action has been adjusted to accept `listenBrainzName` as an input parameter. This aligns with the "Completeness of functionality" principle, ensuring the `User` concept does not rely on direct external API calls (which are the responsibility of the `ListenBrainzAPI` concept). Instead, a higher-level synchronization mechanism would orchestrate the `ListenBrainzAPI` to validate the token and fetch the name, then pass these to `User.associateToken`.
-
-```typescript
-// file: src/concepts/User/UserConcept.ts
-
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
@@ -252,4 +232,3 @@ export default class UserConcept {
     return {};
   }
 }
-```

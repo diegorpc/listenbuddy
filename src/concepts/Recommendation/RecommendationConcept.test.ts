@@ -3,7 +3,7 @@ import { Collection, Db } from "npm:mongodb";
 import { testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
-import Recommendation from "./Recommendation.ts";
+import RecommendationConcept from "./RecommendationConcept.ts";
 import { GeminiLLM } from "@utils/geminiLLM.ts";
 
 // --- Mocking GeminiLLM ---
@@ -134,7 +134,7 @@ const mockSimilarReleaseGroupsA = [
 
 Deno.test("Recommendation Concept", async (t) => {
   const [db, client] = await testDb();
-  const recommendationConcept = new Recommendation(db);
+  const recommendationConcept = new RecommendationConcept(db);
 
   await t.step("should create a Recommendation instance", () => {
     assert(recommendationConcept);
@@ -222,7 +222,7 @@ Deno.test("Recommendation Concept", async (t) => {
     "generate action: effects - LLM fallback if API key is missing",
     async () => {
       Deno.env.delete("GEMINI_API_KEY"); // Unset for this specific test
-      const fallbackConcept = new Recommendation(db); // Re-instantiate to pick up env change
+      const fallbackConcept = new RecommendationConcept(db); // Re-instantiate to pick up env change
 
       // LLM should be undefined now
       assert(

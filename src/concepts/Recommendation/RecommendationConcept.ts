@@ -1,6 +1,6 @@
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts"; // Assumed utility types
-import { freshID } from "@utils/database.ts"; // Assumed utility for ID generation and DB connection
+import { Empty, ID } from "@utils/types.ts";
+import { freshID } from "@utils/database.ts";
 import { GeminiLLM } from "@utils/geminiLLM.ts";
 
 // Declare collection prefix, using the concept name
@@ -73,7 +73,7 @@ interface LLMRecommendationOutput {
  */
 type FeedbackType = boolean; // True for positive, false for negative
 
-export default class Recommendation {
+export default class RecommendationConcept {
   // Purpose: suggest personalized music based on MusicBrainz queries, refining them with AI and iterating through user feedback to refine recommendations
 
   public recommendations: Collection<RecommendationDoc>;
