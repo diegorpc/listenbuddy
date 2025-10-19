@@ -9,7 +9,7 @@ import UserConcept from "./UserConcept.ts";
 import { ID } from "@utils/types.ts";
 import { Buffer } from "node:buffer";
 
-const OUTPUT = true; // for verbose debugging
+const OUTPUT = false; // for verbose debugging
 
 // Helper function to hash passwords for direct DB comparison if needed (though we rely on comparePassword)
 async function hashPasswordForTest(

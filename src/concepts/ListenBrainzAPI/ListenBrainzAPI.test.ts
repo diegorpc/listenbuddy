@@ -8,12 +8,13 @@ import { testDb } from "@utils/database.ts";
 import ListenBrainzAPI from "./ListenBrainzAPI.ts";
 import { ID } from "@utils/types.ts";
 
+const OUTPUT = false; //true for verbose debugging
+
 // Load ListenBrainz token from environment variables
 // This token should be a valid ListenBrainz User Token for testing purposes.
 // Make sure you have a .env file in the project root with LISTENBRAINZ_TOKEN="your_token_here"
 const LISTENBRAINZ_TOKEN = Deno.env.get("LISTENBRAINZ_TOKEN") as string;
 const TEST_USER_ID = "test_user_lbapi" as ID; // A dummy user ID for caching purposes
-const OUTPUT = false; //true for verbose debugging
 
 // Constants for timestamp calculations
 const ONE_DAY_IN_SECONDS = 24 * 3600;

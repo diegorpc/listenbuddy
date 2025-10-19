@@ -13,7 +13,7 @@ import { GeminiLLM } from "@utils/geminiLLM.ts";
 // environment, provided we reset it.
 let originalGeminiExecuteLLM: typeof GeminiLLM.prototype.executeLLM;
 
-const OUTPUT = true; // for verbose logging
+const OUTPUT = false; // for verbose logging
 // A default mock response for the LLM
 const mockLLMSuccessResponse = JSON.stringify([
   {

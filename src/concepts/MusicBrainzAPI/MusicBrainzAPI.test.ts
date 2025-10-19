@@ -11,7 +11,7 @@ import { testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
 import MusicBrainzAPI from "./MusicBrainzAPI.ts";
 
-const OUTPUT = true; // for verbose debugging
+const OUTPUT = false; // for verbose debugging
 
 // Provided test MBIDs
 const RADIOHEAD_MBID = "a74b1b7f-71a5-4011-9441-d0b5e4122711" as ID; // Artist: Radiohead
