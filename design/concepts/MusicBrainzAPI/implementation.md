@@ -280,7 +280,7 @@ interface RateLimitState {
   lastRequestTime: Date;
 }
 
-export default class MusicBrainzAPIConcept {
+export default class MusicBrainzAPI {
   private entityCache: Collection<EntityCache>;
   private rateLimitState: RateLimitState;
 
@@ -443,7 +443,7 @@ export default class MusicBrainzAPIConcept {
       mbid,
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
     // MusicBrainz API returns entity data directly at the root
@@ -472,7 +472,7 @@ export default class MusicBrainzAPIConcept {
       mbid,
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
     // MusicBrainz API returns entity data directly at the root
@@ -501,7 +501,7 @@ export default class MusicBrainzAPIConcept {
       mbid,
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
     // MusicBrainz API returns entity data directly at the root
@@ -530,7 +530,7 @@ export default class MusicBrainzAPIConcept {
       mbid,
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
     // MusicBrainz API returns entity data directly at the root
@@ -559,7 +559,7 @@ export default class MusicBrainzAPIConcept {
       mbid,
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
     // MusicBrainz API returns entity data directly at the root
@@ -601,7 +601,7 @@ export default class MusicBrainzAPIConcept {
       null, // No specific MBID for search
       url,
       this.entityCache, // Using entityCache for search results as well
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
 
@@ -664,7 +664,7 @@ export default class MusicBrainzAPIConcept {
       linkedMbid, // Use linkedMbid as a context for caching
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
     if ("error" in result) return result;
 
@@ -703,7 +703,7 @@ export default class MusicBrainzAPIConcept {
       mbid,
       url,
       this.entityCache,
-      MusicBrainzAPIConcept.ENTITY_CACHE_TTL_MS,
+      MusicBrainzAPI.ENTITY_CACHE_TTL_MS,
     );
 
     if ("error" in result) return result;

@@ -1,25 +1,17 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
+---
+timestamp: 'Sat Oct 18 2025 21:59:39 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_215939.52212fbc.md]]'
+content_id: fa726477354cce45c915d3fbc4068a14ca66d079ad00951241946d3bd4e433f6
+---
 
-[@concept-specifications](../../background/concept-specifications.md)
+# file: src/Recommendation/RecommendationConcept.ts
 
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@Recommendation](Recommendation.md)
-
-[@MusicBrainzAPI](../MusicBrainzAPI/MusicBrainzAPI.md)
-# implement: Recommendation, which should work off results from similarity methods from MusicBrainzAPI. Note to make sure that your concepts are fully independent. There should be no function calls between concepts, and no reference in one concept to the database state of another concept, simply make Recommendation receptive to the creation of syncs between this concept and the MusicBrainzAPI.
-
-# response:
-
-# file: src/Recommendation/Recommendation.ts
-
-```typescript
+````typescript
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts"; 
-import { freshID } from "@utils/database.ts";
-import { GeminiLLM } from "@utils/geminiLLM.ts";
+import { GoogleGenerativeAI } from "npm:@google/generative-ai";
+import { Empty, ID } from "@utils/types.ts"; // Assumed utility types
+import { freshID } from "@utils/database.ts"; // Assumed utility for ID generation and DB connection
+import "https://deno.land/x/dotenv@v3.2.2/load.ts"; // Load environment variables
 
 // Declare collection prefix, using the concept name
 const PREFIX = "Recommendation" + ".";
@@ -27,30 +19,6 @@ const PREFIX = "Recommendation" + ".";
 // Generic types of this concept, as defined in the concept spec
 type User = ID; // The user for whom recommendations are generated
 type Item = ID; // Represents a MusicBrainz MBID (artist, recording, release-group, etc.)
-
-/**
- * Interface for MusicBrainz entity metadata.
- * Based on the common structure from MusicBrainzAPI entities (Artist, Recording, Release, ReleaseGroup, Work).
- * This captures the fields used in recommendation generation.
- */
-interface MusicBrainzEntity {
-  id?: string;
-  name?: string; // For artists, areas, labels
-  title?: string; // For recordings, releases, release-groups, works
-  type?: string; // Entity type (e.g., "Person", "Group", "Album", "Single")
-  disambiguation?: string; // Disambiguation comment
-  description?: string; // Additional description (not always present)
-  genres?: MusicBrainzTag[]; // Genre tags with counts
-  tags?: MusicBrainzTag[]; // User-contributed tags with counts
-}
-
-/**
- * Interface for MusicBrainz tags/genres.
- */
-interface MusicBrainzTag {
-  name: string;
-  count: number;
-}
 
 /**
  * Interface representing a document in the 'Recommendation.recommendations' MongoDB collection.
@@ -91,23 +59,23 @@ interface LLMRecommendationOutput {
  */
 type FeedbackType = boolean; // True for positive, false for negative
 
-export default class Recommendation {
+export default class RecommendationConcept {
   // Purpose: suggest personalized music based on MusicBrainz queries, refining them with AI and iterating through user feedback to refine recommendations
 
-  public recommendations: Collection<RecommendationDoc>;
-  private geminiLLM: GeminiLLM | undefined;
+  private recommendations: Collection<RecommendationDoc>;
+  private genAI: GoogleGenerativeAI | undefined;
+  private llmModel: string;
 
   constructor(private readonly db: Db) {
     this.recommendations = this.db.collection(PREFIX + "recommendations");
 
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    this.llmModel = Deno.env.get("GEMINI_MODEL") || "gemini-1.5-flash-latest";
 
     if (geminiApiKey) {
-      this.geminiLLM = new GeminiLLM({ apiKey: geminiApiKey });
+      this.genAI = new GoogleGenerativeAI(geminiApiKey);
     } else {
-      console.warn(
-        "GEMINI_API_KEY not found. LLM recommendations will not be available.",
-      );
+      console.warn("GEMINI_API_KEY not found. LLM recommendations will not be available.");
     }
   }
 
@@ -130,25 +98,10 @@ export default class Recommendation {
     userId: User;
     sourceItem: Item;
     amount: number;
-    sourceItemMetadata: MusicBrainzEntity; // Metadata for the source item (artist, recording, release-group, etc.)
-    similarArtists: {
-      mbid: string;
-      name: string;
-      score: number;
-      genres: string[];
-    }[];
-    similarRecordings: {
-      mbid: string;
-      name: string;
-      score: number;
-      genres: string[];
-    }[];
-    similarReleaseGroups: {
-      mbid: string;
-      name: string;
-      score: number;
-      genres: string[];
-    }[];
+    sourceItemMetadata: any; // Metadata for the source item (artist, recording, release-group, etc.)
+    similarArtists: { mbid: string; name: string; score: number; genres: string[] }[];
+    similarRecordings: { mbid: string; name: string; score: number; genres: string[] }[];
+    similarReleaseGroups: { mbid: string; name: string; score: number; genres: string[] }[];
   }): Promise<{ recommendations?: RecommendationDoc[]; error?: string }> {
     const {
       userId,
@@ -165,108 +118,95 @@ export default class Recommendation {
     }
 
     // Fetch user-specific feedback history from this concept's state for the LLM prompt
-    const feedbackHistoryResult = await this._getFeedbackHistory({
-      userId: userId,
-    });
+    const feedbackHistoryResult = await this._getFeedbackHistory({ userId: userId });
     const userFeedbackHistory = feedbackHistoryResult.history || [];
 
     // Fallback if LLM is not configured
-    if (!this.geminiLLM) {
+    if (!this.genAI) {
       return this.generateFallbackRecommendations(userId, sourceItem, amount, {
-        similarArtists,
-        similarRecordings,
-        similarReleaseGroups,
+        similarArtists, similarRecordings, similarReleaseGroups
       }, userFeedbackHistory);
     }
+
+    const model = this.genAI.getGenerativeModel({ model: this.llmModel });
 
     // Format MusicBrainz relationships and attributes
     const mbRelationships = [];
     if (similarArtists && similarArtists.length > 0) {
-      mbRelationships.push(
-        `- Similar Artists: ${
-          similarArtists.map((a) =>
-            `${a.name} (MBID: ${a.mbid}, Score: ${a.score})`
-          ).join(", ")
-        }`,
-      );
+      mbRelationships.push(`- Similar Artists: ${similarArtists.map(a => `${a.name} (MBID: ${a.mbid}, Score: ${a.score})`).join(", ")}`);
     }
     if (similarRecordings && similarRecordings.length > 0) {
-      mbRelationships.push(
-        `- Similar Recordings: ${
-          similarRecordings.map((r) =>
-            `${r.name} (MBID: ${r.mbid}, Score: ${r.score})`
-          ).join(", ")
-        }`,
-      );
+      mbRelationships.push(`- Similar Recordings: ${similarRecordings.map(r => `${r.name} (MBID: ${r.mbid}, Score: ${r.score})`).join(", ")}`);
     }
     if (similarReleaseGroups && similarReleaseGroups.length > 0) {
-      mbRelationships.push(
-        `- Similar Albums/Release Groups: ${
-          similarReleaseGroups.map((rg) =>
-            `${rg.name} (MBID: ${rg.mbid}, Score: ${rg.score})`
-          ).join(", ")
-        }`,
-      );
+      mbRelationships.push(`- Similar Albums/Release Groups: ${similarReleaseGroups.map(rg => `${rg.name} (MBID: ${rg.mbid}, Score: ${rg.score})`).join(", ")}`);
     }
     // Extract genres/tags from sourceItemMetadata (e.g., from MusicBrainzAPI's getEntityGenres results)
-    const sourceGenres =
-      sourceItemMetadata?.genres?.map((g: any) => g.name).join(", ") || "N/A";
-    const sourceTags =
-      sourceItemMetadata?.tags?.map((t: any) => t.name).join(", ") || "N/A";
+    const sourceGenres = sourceItemMetadata?.genres?.map((g: any) => g.name).join(", ") || "N/A";
+    const sourceTags = sourceItemMetadata?.tags?.map((t: any) => t.name).join(", ") || "N/A";
 
     // Format user feedback history
     const positiveFeedback = userFeedbackHistory
-      .filter((f) => f.feedback === true)
-      .map((f) =>
-        `- Item: ${f.item} (Source: ${f.sourceItem}), Reasoning: ${f.reasoning}`
-      )
+      .filter(f => f.feedback === true)
+      .map(f => `- Item: ${f.item} (Source: ${f.sourceItem}), Reasoning: ${f.reasoning}`)
       .join("\n");
 
     const negativeFeedback = userFeedbackHistory
-      .filter((f) => f.feedback === false)
-      .map((f) =>
-        `- Item: ${f.item} (Source: ${f.sourceItem}), Reasoning: ${f.reasoning}`
-      )
+      .filter(f => f.feedback === false)
+      .map(f => `- Item: ${f.item} (Source: ${f.sourceItem}), Reasoning: ${f.reasoning}`)
       .join("\n");
 
-    const prompt = this._buildRecommendationPrompt({
-      userId,
-      sourceItem,
-      amount,
-      sourceItemMetadata,
-      sourceGenres,
-      sourceTags,
-      mbRelationships,
-      positiveFeedback,
-      negativeFeedback,
-    });
+    const prompt = `You are a music recommendation assistant. Generate exactly ${amount} unique recommendations based on the provided information for user ${userId}.
+    Provide the output as a JSON array of objects, where each object has 'name' (string), 'mbid' (string, MusicBrainz ID), 'reasoning' (string, 2-3 sentences), and 'confidence' (number between 0 and 1).
+
+SOURCE ITEM: ${sourceItemMetadata?.name || "Unknown"} (MBID: ${sourceItem})
+Type: ${sourceItemMetadata?.type || "Unknown"}
+Description: ${sourceItemMetadata?.disambiguation || sourceItemMetadata?.description || "N/A"}
+
+MUSICAL ATTRIBUTES:
+- Genres: ${sourceGenres}
+- Tags: ${sourceTags}
+
+MUSICBRAINZ RELATIONSHIPS:
+${mbRelationships.length > 0 ? mbRelationships.join("\n") : "- No specific relationships provided."}
+
+USER FEEDBACK HISTORY for user ${userId}:
+Positive: ${positiveFeedback || "None"}
+Negative: ${negativeFeedback || "None"}
+
+Generate ${amount} recommendations with:
+1. Item name
+2. MusicBrainz ID (mbid)
+3. Natural language reasoning (2-3 sentences)
+4. Confidence score (0-1)
+
+Prioritize items that match positive feedback patterns and avoid negative patterns. Ensure recommended MBIDs are unique and different from the source item MBID and previously liked/disliked items from this user's feedback history.`;
 
     try {
-      const text = await this.geminiLLM.executeLLM(prompt);
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const text = response.text();
 
       // Attempt to parse JSON. LLMs sometimes include markdown formatting (```json ... ```)
-      const parsedRecommendations = this._parseJSONFromLLMResponse(text);
-      if (!parsedRecommendations) {
-        console.error("Failed to parse LLM response as JSON:", text);
+      let parsedRecommendations: LLMRecommendationOutput[];
+      try {
+        const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+        if (jsonMatch && jsonMatch[1]) {
+          parsedRecommendations = JSON.parse(jsonMatch[1]);
+        } else {
+          parsedRecommendations = JSON.parse(text); // Try direct parse
+        }
+      } catch (parseError) {
+        console.error("Failed to parse LLM response as JSON:", text, parseError);
         return { error: "Failed to parse LLM recommendations." };
       }
 
       const newRecommendations: RecommendationDoc[] = [];
-      const existingFeedbackItems = new Set(
-        userFeedbackHistory.map((f) => f.item),
-      );
+      const existingFeedbackItems = new Set(userFeedbackHistory.map(f => f.item));
 
       for (const rec of parsedRecommendations) {
-        // Stop if we've reached the requested amount
-        if (newRecommendations.length >= amount) {
-          break;
-        }
-
         // Ensure valid MBID, not recommending the source itself, and not an item already in user's feedback history
-        if (
-          rec.mbid && rec.mbid !== sourceItem &&
-          !existingFeedbackItems.has(rec.mbid as Item)
-        ) {
+        if (rec.mbid && rec.mbid !== sourceItem && !existingFeedbackItems.has(rec.mbid as Item)) {
           newRecommendations.push({
             _id: freshID(),
             userId: userId, // Associate with the user
@@ -285,6 +225,7 @@ export default class Recommendation {
       }
 
       return { recommendations: newRecommendations };
+
     } catch (e) {
       console.error("Error generating recommendations with LLM:", e);
       return { error: `Failed to generate recommendations: ${e.message}` };
@@ -300,94 +241,38 @@ export default class Recommendation {
     sourceItem: Item,
     amount: number,
     similarData: {
-      similarArtists: {
-        mbid: string;
-        name: string;
-        score: number;
-        genres: string[];
-      }[];
-      similarRecordings: {
-        mbid: string;
-        name: string;
-        score: number;
-        genres: string[];
-      }[];
-      similarReleaseGroups: {
-        mbid: string;
-        name: string;
-        score: number;
-        genres: string[];
-      }[];
+      similarArtists: { mbid: string; name: string; score: number; genres: string[] }[];
+      similarRecordings: { mbid: string; name: string; score: number; genres: string[] }[];
+      similarReleaseGroups: { mbid: string; name: string; score: number; genres: string[] }[];
     },
-    userFeedbackHistory: {
-      item: Item;
-      feedback: boolean;
-      reasoning: string;
-      sourceItem: Item;
-    }[],
+    userFeedbackHistory: { item: Item; feedback: boolean; reasoning: string; sourceItem: Item }[]
   ): Promise<{ recommendations?: RecommendationDoc[]; error?: string }> {
-    const { similarArtists, similarRecordings, similarReleaseGroups } =
-      similarData;
-    const allSimilarItems: {
-      mbid: string;
-      name: string;
-      type: string;
-      score: number;
-    }[] = [];
+    const { similarArtists, similarRecordings, similarReleaseGroups } = similarData;
+    const allSimilarItems: { mbid: string; name: string; type: string; score: number }[] = [];
 
-    similarArtists.forEach((a) =>
-      allSimilarItems.push({
-        mbid: a.mbid,
-        name: a.name,
-        type: "artist",
-        score: a.score,
-      })
-    );
-    similarRecordings.forEach((r) =>
-      allSimilarItems.push({
-        mbid: r.mbid,
-        name: r.name,
-        type: "recording",
-        score: r.score,
-      })
-    );
-    similarReleaseGroups.forEach((rg) =>
-      allSimilarItems.push({
-        mbid: rg.mbid,
-        name: rg.name,
-        type: "release-group",
-        score: rg.score,
-      })
-    );
+    similarArtists.forEach(a => allSimilarItems.push({ mbid: a.mbid, name: a.name, type: "artist", score: a.score }));
+    similarRecordings.forEach(r => allSimilarItems.push({ mbid: r.mbid, name: r.name, type: "recording", score: r.score }));
+    similarReleaseGroups.forEach(rg => allSimilarItems.push({ mbid: rg.mbid, name: rg.name, type: "release-group", score: rg.score }));
 
     // Filter out items already in user's feedback history
-    const existingFeedbackItems = new Set(
-      userFeedbackHistory.map((f) => f.item),
-    );
+    const existingFeedbackItems = new Set(userFeedbackHistory.map(f => f.item));
 
     const newRecommendations: RecommendationDoc[] = [];
     const uniqueRecommendedItems = new Set<Item>(); // To track uniqueness within this batch
 
     allSimilarItems
       .sort((a, b) => b.score - a.score)
-      .filter((item) =>
-        item.mbid !== sourceItem &&
-        !existingFeedbackItems.has(item.mbid as Item)
-      ) // Don't recommend source or already feedbacked items
+      .filter(item => item.mbid !== sourceItem && !existingFeedbackItems.has(item.mbid as Item)) // Don't recommend source or already feedbacked items
       .slice(0, amount * 2) // Take a bit more to ensure we can pick 'amount' unique items
-      .forEach((item) => {
-        if (
-          uniqueRecommendedItems.size < amount &&
-          !uniqueRecommendedItems.has(item.mbid as Item)
-        ) {
+      .forEach(item => {
+        if (uniqueRecommendedItems.size < amount && !uniqueRecommendedItems.has(item.mbid as Item)) {
           uniqueRecommendedItems.add(item.mbid as Item);
           newRecommendations.push({
             _id: freshID(),
             userId: userId, // Associate with the user
             item1: sourceItem,
             item2: item.mbid as Item,
-            reasoning:
-              `Based on its similarity as a ${item.type} and shared genres. (LLM not available)`,
+            reasoning: `Based on its similarity as a ${item.type} and shared genres. (LLM not available)`,
             confidence: item.score / 100, // Assuming score is out of 100, normalize
             feedback: null,
             createdAt: new Date(),
@@ -401,6 +286,7 @@ export default class Recommendation {
     return { recommendations: newRecommendations };
   }
 
+
   /**
    * getRecommendations(userId: User, item: Item, amount: Number): Set<Item>
    *
@@ -411,9 +297,7 @@ export default class Recommendation {
    * Retrieves a list of recommended items for a given item and user, prioritizing positively
    * feedbacked recommendations and strictly avoiding negatively feedbacked ones.
    */
-  async getRecommendations(
-    params: { userId: User; item: Item; amount: number },
-  ): Promise<{ items?: Item[]; error?: string }> {
+  async getRecommendations(params: { userId: User; item: Item; amount: number }): Promise<{ items?: Item[]; error?: string }> {
     const { userId, item, amount } = params;
     if (!userId || !item || amount <= 0) {
       return { error: "Invalid user ID, item or amount specified." };
@@ -426,12 +310,7 @@ export default class Recommendation {
         $or: [{ item1: item }, { item2: item }],
       }).toArray();
 
-      const candidates: {
-        recommendedItem: Item;
-        feedback: boolean | null;
-        confidence: number;
-        createdAt: Date;
-      }[] = [];
+      const candidates: { recommendedItem: Item; feedback: boolean | null; confidence: number; createdAt: Date }[] = [];
       const seenItems = new Set<Item>();
 
       for (const rec of allRelatedRecommendations) {
@@ -480,6 +359,7 @@ export default class Recommendation {
       }
 
       return { items: finalRecommendedItems };
+
     } catch (e) {
       console.error("Error retrieving recommendations:", e);
       return { error: `Failed to retrieve recommendations: ${e.message}` };
@@ -507,14 +387,11 @@ export default class Recommendation {
     try {
       const updateResult = await this.recommendations.updateMany(
         { userId: userId, item2: recommendedItem }, // Target specific user's recommendation instances
-        { $set: { feedback: feedback, createdAt: new Date() } }, // Update feedback and refresh timestamp
+        { $set: { feedback: feedback, createdAt: new Date() } } // Update feedback and refresh timestamp
       );
 
       if (updateResult.matchedCount === 0) {
-        return {
-          error:
-            "No existing recommendation found for the provided item and user.",
-        };
+        return { error: "No existing recommendation found for the provided item and user." };
       }
       return {};
     } catch (e) {
@@ -530,9 +407,7 @@ export default class Recommendation {
    *
    * Deletes all recommendation and feedback data for a user (or all users) from the concept's state.
    */
-  async clearRecommendations(
-    params: { userId?: User } = {},
-  ): Promise<Empty | { error: string }> {
+  async clearRecommendations(params: { userId?: User } = {}): Promise<Empty | { error: string }> {
     const { userId } = params;
     try {
       const filter = userId ? { userId: userId } : {};
@@ -551,19 +426,7 @@ export default class Recommendation {
    *         the feedback, the reasoning, and the source item that led to the recommendation.
    *         This query is used internally by the `generate` action to provide context to the LLM.
    */
-  async _getFeedbackHistory(
-    params: { userId: User },
-  ): Promise<
-    {
-      history?: {
-        item: Item;
-        feedback: boolean;
-        reasoning: string;
-        sourceItem: Item;
-      }[];
-      error?: string;
-    }
-  > {
+  async _getFeedbackHistory(params: { userId: User }): Promise<{ history?: { item: Item; feedback: boolean; reasoning: string; sourceItem: Item }[]; error?: string }> {
     const { userId } = params;
     if (!userId) {
       return { error: "User ID not specified." };
@@ -571,10 +434,10 @@ export default class Recommendation {
     try {
       const feedbackDocs = await this.recommendations.find({
         userId: userId,
-        feedback: { $ne: null }, // Only retrieve items where feedback has been provided
+        feedback: { $ne: null } // Only retrieve items where feedback has been provided
       }).toArray();
 
-      const history = feedbackDocs.map((doc) => ({
+      const history = feedbackDocs.map(doc => ({
         item: doc.item2, // The item that was recommended and received feedback
         feedback: doc.feedback!, // Non-null asserted because of query
         reasoning: doc.reasoning,
@@ -586,87 +449,5 @@ export default class Recommendation {
       return { error: `Failed to retrieve feedback history: ${e.message}` };
     }
   }
-
-  /**
-   * Private helper to build the LLM prompt for music recommendations.
-   * Extracts prompt construction logic to improve readability of the generate method.
-   */
-  private _buildRecommendationPrompt(params: {
-    userId: User;
-    sourceItem: Item;
-    amount: number;
-    sourceItemMetadata: MusicBrainzEntity;
-    sourceGenres: string;
-    sourceTags: string;
-    mbRelationships: string[];
-    positiveFeedback: string;
-    negativeFeedback: string;
-  }): string {
-    const {
-      userId,
-      sourceItem,
-      amount,
-      sourceItemMetadata,
-      sourceGenres,
-      sourceTags,
-      mbRelationships,
-      positiveFeedback,
-      negativeFeedback,
-    } = params;
-
-    return `You are a music recommendation assistant. Generate exactly ${amount} unique recommendations based on the provided information for user ${userId}.
-    Provide the output as a JSON array of objects, where each object has 'name' (string), 'mbid' (string, MusicBrainz ID), 'reasoning' (string, 2-3 sentences), and 'confidence' (number between 0 and 1).
-
-SOURCE ITEM: ${sourceItemMetadata?.name || "Unknown"} (MBID: ${sourceItem})
-Type: ${sourceItemMetadata?.type || "Unknown"}
-Description: ${
-      sourceItemMetadata?.disambiguation || sourceItemMetadata?.description ||
-      "N/A"
-    }
-
-MUSICAL ATTRIBUTES:
-- Genres: ${sourceGenres}
-- Tags: ${sourceTags}
-
-MUSICBRAINZ RELATIONSHIPS:
-${
-      mbRelationships.length > 0
-        ? mbRelationships.join("\n")
-        : "- No specific relationships provided."
-    }
-
-USER FEEDBACK HISTORY for user ${userId}:
-Positive: ${positiveFeedback || "None"}
-Negative: ${negativeFeedback || "None"}
-
-Generate ${amount} recommendations with:
-1. Item name
-2. MusicBrainz ID (mbid)
-3. Natural language reasoning (2-3 sentences)
-4. Confidence score (0-1)
-
-Prioritize items that match positive feedback patterns and avoid negative patterns. Ensure recommended MBIDs are unique and different from the source item MBID and previously liked/disliked items from this user's feedback history.`;
-  }
-
-  /**
-   * Private helper to parse JSON from LLM response.
-   * Handles both raw JSON and markdown-wrapped JSON (```json ... ```).
-   */
-  private _parseJSONFromLLMResponse(
-    text: string,
-  ): LLMRecommendationOutput[] | null {
-    try {
-      // First, try to extract JSON from markdown code blocks
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch && jsonMatch[1]) {
-        return JSON.parse(jsonMatch[1]);
-      }
-      // If no markdown wrapper, try direct parse
-      return JSON.parse(text);
-    } catch (parseError) {
-      console.error("JSON parsing error:", parseError);
-      return null;
-    }
-  }
 }
-```
+````

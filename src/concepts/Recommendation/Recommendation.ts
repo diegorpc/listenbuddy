@@ -1,24 +1,6 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
-
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@Recommendation](Recommendation.md)
-
-[@MusicBrainzAPI](../MusicBrainzAPI/MusicBrainzAPI.md)
-# implement: Recommendation, which should work off results from similarity methods from MusicBrainzAPI. Note to make sure that your concepts are fully independent. There should be no function calls between concepts, and no reference in one concept to the database state of another concept, simply make Recommendation receptive to the creation of syncs between this concept and the MusicBrainzAPI.
-
-# response:
-
-# file: src/Recommendation/Recommendation.ts
-
-```typescript
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts"; 
-import { freshID } from "@utils/database.ts";
+import { Empty, ID } from "@utils/types.ts"; // Assumed utility types
+import { freshID } from "@utils/database.ts"; // Assumed utility for ID generation and DB connection
 import { GeminiLLM } from "@utils/geminiLLM.ts";
 
 // Declare collection prefix, using the concept name
@@ -669,4 +651,3 @@ Prioritize items that match positive feedback patterns and avoid negative patter
     }
   }
 }
-```

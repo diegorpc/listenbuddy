@@ -1,5 +1,4 @@
 // This test suite makes real API calls to MusicBrainz with 1 call/s rate limit, so it's a bit lengthy.
-
 import {
   assertEquals,
   assertExists,
@@ -10,7 +9,7 @@ import {
 } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
-import MusicBrainzAPIConcept from "./MusicBrainzAPI.ts";
+import MusicBrainzAPI from "./MusicBrainzAPI.ts";
 
 const OUTPUT = true; // for verbose debugging
 
@@ -30,7 +29,7 @@ const isError = (result: any): result is { error: string } => {
 
 Deno.test("MusicBrainzAPI Concept", async (t) => {
   const [db, client] = await testDb();
-  const musicBrainzAPI = new MusicBrainzAPIConcept(db);
+  const musicBrainzAPI = new MusicBrainzAPI(db);
 
   await t.step("should initialize collections", async () => {
     assertExists(musicBrainzAPI["entityCache"]);

@@ -178,7 +178,7 @@ type ListeningActivity = ListeningActivityPeriod[];
  * @purpose retrieve user listening statistics and history from ListenBrainz to display top artists, albums, and tracks over various time periods
  * @principle after a user associates their ListenBrainz token, the API fetches their scrobble data to show top artists, releases, and songs over any time range, enabling the app to display personalized listening statistics.
  */
-export default class ListenBrainzAPIConcept {
+export default class ListenBrainzAPI {
   private statsCache: Collection<StatisticsCacheDoc>;
   private listenHistoryCache: Collection<ListenHistoryDoc>;
   private readonly CACHE_TTL_MS = 3600 * 1000; // 1 hour for statistics cache

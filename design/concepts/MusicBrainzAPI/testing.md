@@ -6,7 +6,7 @@
 # test: MusicBrainzAPI, using the provided test mbids
 # response:
 
-Here's the test file for the `MusicBrainzAPIConcept`, adhering to the specified structure and testing guidelines.
+Here's the test file for the `MusicBrainzAPI`, adhering to the specified structure and testing guidelines.
 
 ```typescript
 // file: src/concepts/MusicBrainzAPI/MusicBrainzAPI.test.ts
@@ -21,7 +21,7 @@ import {
 } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
-import MusicBrainzAPIConcept from "./MusicBrainzAPI.ts";
+import MusicBrainzAPI from "./MusicBrainzAPI.ts";
 
 // Provided test MBIDs
 const RADIOHEAD_MBID = "a74b1b7f-71a5-4011-9441-d0b5e4122711" as ID; // Artist: Radiohead
@@ -37,7 +37,7 @@ const isError = (result: any): result is { error: string } => {
 
 Deno.test("MusicBrainzAPI Concept", async (t) => {
   const [db, client] = await testDb();
-  const musicBrainzAPI = new MusicBrainzAPIConcept(db);
+  const musicBrainzAPI = new MusicBrainzAPI(db);
 
   await t.step("should initialize collections", async () => {
     assertExists(musicBrainzAPI["entityCache"]);

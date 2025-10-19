@@ -41,7 +41,21 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "design/concepts/MusicBrainzAPI/testing.md",
+                "file": "design/concepts/Recommendation/testing.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "testing"
+            }
+          },
+          {
+            "id": "863df6d2d5cae08a",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "design/concepts/Recommendation/testing.md",
                 "mode": "source",
                 "source": false
               },
@@ -92,7 +106,7 @@
             }
           }
         ],
-        "currentTab": 2
+        "currentTab": 3
       }
     ],
     "direction": "vertical"
@@ -240,43 +254,43 @@
       "bases:Create new base": false
     }
   },
-  "active": "d7c23dd45565a750",
+  "active": "863df6d2d5cae08a",
   "lastOpenFiles": [
-    "context/design/concepts/ListenBrainzAPI/ListenBrainzAPI.md/20251018_214917.fe5e1b18.md",
-    "context/design/concepts/ListenBrainzAPI/ListenBrainzAPI.md/steps/concept.a5da5fef.md",
-    "context/design/concepts/MusicBrainzAPI/MusicBrainzAPI.md/20251018_214903.e64a790b.md",
-    "context/design/concepts/MusicBrainzAPI/MusicBrainzAPI.md/steps/concept.9ddaec2e.md",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.test.ts/20251018_214852.feca25f2.md",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.ts/20251018_214842.e5dcce49.md",
-    "context/design/concepts/MusicBrainzAPI/MusicBrainzAPI.md/20251018_211110.d7a3d38a.md",
-    "context/design/concepts/MusicBrainzAPI/MusicBrainzAPI.md/steps/concept.dffb2612.md",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.ts/20251018_211042.4eeb3ccf.md",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.test.ts/20251018_211014.ec9de97c.md",
-    "remove-relationship-cache.ts",
-    "SIMILARITY_REWORK_SUMMARY.md",
-    "test-genre-similarity.ts",
-    "context/design/concepts/ListenBrainzAPI/testing.md/steps/concept.9bd4b6c7.md",
-    "context/design/concepts/ListenBrainzAPI/testing.md/steps/approach.3e0d5a8f.md",
-    "context/src/concepts/ListenBrainzAPI/ListenBrainzAPI.test.ts/20251018_203722.bc4925ab.md",
-    "context/src/concepts/ListenBrainzAPI/ListenBrainzAPI.ts/20251018_203712.6228fa92.md",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.test.ts/20251018_203700.c106a288.md",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.test.ts",
-    "context/src/concepts/MusicBrainzAPI/MusicBrainzAPI.ts/20251018_203633.64df1e56.md",
-    "test-relationships.ts",
-    "test-mb-api2.ts",
-    "test-mb-api.ts",
-    "MusicBrainz API documentation.htm",
-    "src/concepts/MusicBrainzAPI/MusicBrainzAPI.test.ts",
-    "design/concepts/MusicBrainzAPI/implementation.md",
-    "design/concepts/MusicBrainzAPI/testing.md",
-    "design/concepts/MusicBrainzAPI/MusicBrainzAPI.md",
-    "context/design/concepts/MusicBrainzAPI/testing.md/20251018_190827.a2ba67cb.md",
-    "context/design/concepts/MusicBrainzAPI/testing.md/steps/response.5b8811cc.md",
-    "context/design/concepts/MusicBrainzAPI/testing.md/20251018_190731.1e509cc2.md",
-    "context/design/concepts/MusicBrainzAPI/testing.md/steps/test.fd57b055.md",
-    "context/design/concepts/MusicBrainzAPI/testing.md/steps/_.98395769.md",
-    "README.md",
-    "context/design/concepts/MusicBrainzAPI/testing.md/steps",
-    "src/concepts/Recommendation"
+    "context/src/concepts/Recommendation/Recommendation.test.ts/20251018_230212.6809b217.md",
+    "context/src/concepts/Recommendation/Recommendation.test.ts",
+    "context/src/concepts/Recommendation/Recommendation.ts/20251018_230203.cb80d686.md",
+    "context/src/concepts/Recommendation/Recommendation.ts",
+    "context/src/concepts/Recommendation",
+    "context/design/concepts/Recommendation/testing.md/20251018_230148.daa0c579.md",
+    "context/design/concepts/Recommendation/testing.md/steps/file.f5b1e84b.md",
+    "context/design/concepts/Recommendation/testing.md/steps/file.cbf4101d.md",
+    "context/design/concepts/Recommendation/implementation.md/20251018_230138.1f139188.md",
+    "context/design/concepts/Recommendation/implementation.md/steps/file.cbf4101d.md",
+    "context/design/concepts/Recommendation/implementation.md/steps/response.6d76b65d.md",
+    "context/design/concepts/Recommendation/implementation.md/steps/concept.8b768a14.md",
+    "context/design/concepts/Recommendation/Recommendation.md/20251018_230110.758e822d.md",
+    "context/design/concepts/Recommendation/Recommendation.md/steps/concept.8b768a14.md",
+    "design/concepts/Recommendation/Recommendation.md",
+    "design/concepts/Recommendation/testing.md",
+    "context/design/concepts/Recommendation/testing.md/20251018_224352.6bc25818.md",
+    "context/design/concepts/Recommendation/testing.md/steps/file.e9fede62.md",
+    "context/design/concepts/Recommendation/testing.md/20251018_224313.a6d845d8.md",
+    "context/design/concepts/Recommendation/testing.md/steps/test.4534dd06.md",
+    "design/concepts/Recommendation/implementation.md",
+    "src/concepts/Recommendation/Recommendation.test.ts",
+    "context/design/concepts/Recommendation/testing.md/20251018_223620.4150ca64.md",
+    "context/design/concepts/Recommendation/testing.md/steps/trace.4c2517db.md",
+    "context/design/concepts/Recommendation/testing.md/steps/file.6b791f9b.md",
+    "context/design/concepts/Recommendation/testing.md/steps/file.a5efc1c6.md",
+    "context/design/concepts/Recommendation/testing.md/20251018_223509.6a26c901.md",
+    "context/design/concepts/Recommendation/testing.md/steps/test.f50dd384.md",
+    "context/design/concepts/Recommendation/testing.md/steps/_.eb4d1820.md",
+    "context/design/concepts/Recommendation/testing.md/steps/approach.3e0d5a8f.md",
+    "context/design/concepts/Recommendation/testing.md/steps",
+    "src/utils/geminiLLM.ts",
+    "src/geminiLLM.ts",
+    "design/concepts/geminiLLM/geminiLLM.ts",
+    "design/concepts/geminiLLM",
+    "src/concepts/Recommendation/Recommendation.ts"
   ]
 }

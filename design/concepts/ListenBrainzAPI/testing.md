@@ -15,7 +15,7 @@ import {
   assertNotEquals,
 } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
-import ListenBrainzAPIConcept from "./ListenBrainzAPI.ts";
+import ListenBrainzAPI from "./ListenBrainzAPI.ts";
 import { ID } from "@utils/types.ts";
 
 // Load ListenBrainz token from environment variables
@@ -37,7 +37,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
   }
 
   const [db, client] = await testDb();
-  const lbApi = new ListenBrainzAPIConcept(db);
+  const lbApi = new ListenBrainzAPI(db);
 
   // Before all tests, ensure a clean state
   await lbApi.clearCache({ user: TEST_USER_ID });

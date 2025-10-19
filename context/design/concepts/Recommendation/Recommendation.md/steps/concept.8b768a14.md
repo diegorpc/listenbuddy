@@ -1,3 +1,8 @@
+---
+timestamp: 'Sat Oct 18 2025 23:01:10 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_230110.758e822d.md]]'
+content_id: 8b768a1491af757cbc5d976e690cb221a56490a9aafc03d056aa66feec169d36
+---
 
 # concept: Recommendation
 
@@ -9,14 +14,21 @@
 
 * **state**:
 
- * A set of `Recommendations` with:
-  * a `userId` of type `User` (references the user for whom the recommendation was generated)
-  * a `item1` of type `Item` (the source item for the recommendation)
-  * a `item2` of type `Item` (the recommended item)
-  * a `reasoning` of type `String` (explanation provided by the LLM or fallback)
-  * a `confidence` of type `Number` (score from 0 to 1, indicating LLM confidence or similarity strength)
-  * an optional `feedback` of type `Boolean` (T = positive, F = negative)
-  * a `createdAt` of type `Timestamp` (when the recommendation was created or last updated with feedback)
+* A set of `Recommendations` with:
+
+* a `userId` of type `User` (references the user for whom the recommendation was generated)
+
+* a `item1` of type `Item` (the source item for the recommendation)
+
+* a `item2` of type `Item` (the recommended item)
+
+* a `reasoning` of type `String` (explanation provided by the LLM or fallback)
+
+* a `confidence` of type `Number` (score from 0 to 1, indicating LLM confidence or similarity strength)
+
+* an optional `feedback` of type `Boolean` (T = positive, F = negative)
+
+* a `createdAt` of type `Timestamp` (when the recommendation was created or last updated with feedback)
 
 * **actions**:
   * `generate(userId: User, sourceItem: Item, amount: Number, sourceItemMetadata: JSON, similarArtists: List<JSON>, similarRecordings: List<JSON>, similarReleaseGroups: List<JSON>): Set<Recommendations>`

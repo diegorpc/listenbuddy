@@ -1,24 +1,15 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
-
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@Recommendation](Recommendation.md)
-
-[@MusicBrainzAPI](../MusicBrainzAPI/MusicBrainzAPI.md)
-# implement: Recommendation, which should work off results from similarity methods from MusicBrainzAPI. Note to make sure that your concepts are fully independent. There should be no function calls between concepts, and no reference in one concept to the database state of another concept, simply make Recommendation receptive to the creation of syncs between this concept and the MusicBrainzAPI.
-
-# response:
+---
+timestamp: 'Sat Oct 18 2025 22:35:09 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251018_223509.6a26c901.md]]'
+content_id: e911ea20c4200dcb80c6e49a041434a1bc9eb67d7e10dbdc67ff4f6e2f10d953
+---
 
 # file: src/Recommendation/Recommendation.ts
 
-```typescript
+````typescript
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts"; 
-import { freshID } from "@utils/database.ts";
+import { Empty, ID } from "@utils/types.ts"; // Assumed utility types
+import { freshID } from "@utils/database.ts"; // Assumed utility for ID generation and DB connection
 import { GeminiLLM } from "@utils/geminiLLM.ts";
 
 // Declare collection prefix, using the concept name
@@ -94,7 +85,7 @@ type FeedbackType = boolean; // True for positive, false for negative
 export default class Recommendation {
   // Purpose: suggest personalized music based on MusicBrainz queries, refining them with AI and iterating through user feedback to refine recommendations
 
-  public recommendations: Collection<RecommendationDoc>;
+  private recommendations: Collection<RecommendationDoc>;
   private geminiLLM: GeminiLLM | undefined;
 
   constructor(private readonly db: Db) {
@@ -257,11 +248,6 @@ export default class Recommendation {
       );
 
       for (const rec of parsedRecommendations) {
-        // Stop if we've reached the requested amount
-        if (newRecommendations.length >= amount) {
-          break;
-        }
-
         // Ensure valid MBID, not recommending the source itself, and not an item already in user's feedback history
         if (
           rec.mbid && rec.mbid !== sourceItem &&
@@ -669,4 +655,4 @@ Prioritize items that match positive feedback patterns and avoid negative patter
     }
   }
 }
-```
+````
