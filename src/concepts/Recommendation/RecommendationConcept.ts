@@ -269,7 +269,11 @@ export default class RecommendationConcept {
       return { recommendations: newRecommendations };
     } catch (e) {
       console.error("Error generating recommendations with LLM:", e);
-      return { error: `Failed to generate recommendations: ${e.message}` };
+      return {
+        error: `Failed to generate recommendations: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
     }
   }
 
@@ -464,7 +468,11 @@ export default class RecommendationConcept {
       return { items: finalRecommendedItems };
     } catch (e) {
       console.error("Error retrieving recommendations:", e);
-      return { error: `Failed to retrieve recommendations: ${e.message}` };
+      return {
+        error: `Failed to retrieve recommendations: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
     }
   }
 
@@ -501,7 +509,11 @@ export default class RecommendationConcept {
       return {};
     } catch (e) {
       console.error("Error providing feedback:", e);
-      return { error: `Failed to provide feedback: ${e.message}` };
+      return {
+        error: `Failed to provide feedback: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
     }
   }
 
@@ -522,7 +534,11 @@ export default class RecommendationConcept {
       return {};
     } catch (e) {
       console.error("Error clearing recommendations:", e);
-      return { error: `Failed to clear recommendations: ${e.message}` };
+      return {
+        error: `Failed to clear recommendations: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
     }
   }
 
@@ -565,7 +581,11 @@ export default class RecommendationConcept {
       return { history: history };
     } catch (e) {
       console.error("Error retrieving feedback history:", e);
-      return { error: `Failed to retrieve feedback history: ${e.message}` };
+      return {
+        error: `Failed to retrieve feedback history: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
     }
   }
 

@@ -256,6 +256,14 @@
   },
   "active": "863df6d2d5cae08a",
   "lastOpenFiles": [
+    "context/src/concepts/User/UserConcept.test.ts/20251019_084155.a7677317.md",
+    "context/src/concepts/User/UserConcept.test.ts",
+    "context/src/concepts/User/UserConcept.ts/20251019_084145.cf7225cc.md",
+    "context/src/concepts/User/UserConcept.ts",
+    "context/src/concepts/User",
+    "context/design/concepts/ListenBrainzAPI/implementation.md/20251019_084135.bfb391c1.md",
+    "context/design/concepts/ListenBrainzAPI/implementation.md/steps/response.cc4ed560.md",
+    "context/design/concepts/ListenBrainzAPI/implementation.md/steps/concept.a5da5fef.md",
     "src/concepts/User/UserConcept.ts",
     "src/concepts/User/UserConcept.test.ts",
     "src/concepts/Recommendation/RecommendationConcept.test.ts",
@@ -282,15 +290,7 @@
     "context/design/concepts/User/testing.md/steps/approach.5df2171f.md",
     "context/design/concepts/User/testing.md/steps/_.b0364a7a.md",
     "context/design/concepts/User/testing.md/steps/_.c4429238.md",
-    "context/design/concepts/User/testing.md/steps/_.9882ded2.md",
     "context/design/concepts/User/testing.md/steps",
-    "context/design/concepts/User/testing.md",
-    "design/concepts/User/User.md",
-    "design/concepts/MusicBrainzAPI/testing.md",
-    "src/concepts/User/User.ts",
-    "context/design/concepts/User/implementation.md/steps",
-    "context/src/concepts/Recommendation/Recommendation.test.ts",
-    "context/src/concepts/Recommendation/Recommendation.ts",
-    "context/src/concepts/Recommendation"
+    "src/concepts/User/User.ts"
   ]
 }

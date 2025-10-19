@@ -1,14 +1,9 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
+---
+timestamp: 'Sun Oct 19 2025 08:41:35 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251019_084135.bfb391c1.md]]'
+content_id: cc4ed560d9d833cd2162764efe348e8c65d51130d0e01d72981765f39540c5af
+---
 
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@ListenBrainzAPI](ListenBrainzAPI.md)
-
-# implement: ListenBrainzAPI
 # response:
 
 Here's the implementation of the `ListenBrainzAPI` concept in TypeScript, following the provided concept design principles and implementation guidelines.

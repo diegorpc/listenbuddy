@@ -168,6 +168,9 @@ export default class ListenBrainzAPI {
   // Rate limiting state
   private rateLimitRemaining: number = Infinity;
   private rateLimitResetTime: number = 0; // Unix timestamp in seconds
+  private lastRequestTime: number = 0; // Unix timestamp in milliseconds
+  private readonly MIN_REQUEST_INTERVAL_MS = 250; // Minimum 250ms between requests
+  private readonly LOW_RATE_LIMIT_THRESHOLD = 5; // Start being cautious when this many requests remain
 
   constructor(private readonly db: Db) {
     this.statsCache = this.db.collection(PREFIX + "statisticsCache");
@@ -187,14 +190,37 @@ export default class ListenBrainzAPI {
     params: Record<string, unknown> = {},
     method: "GET" | "POST" = "GET",
     body: Record<string, unknown> | null = null,
+    retryCount: number = 0,
   ): Promise<T | { error: string }> {
-    // Check if we need to wait for rate limit reset
-    const now = Date.now() / 1000; // Convert to seconds
-    if (this.rateLimitRemaining <= 0 && this.rateLimitResetTime > now) {
-      const waitTime = Math.ceil(this.rateLimitResetTime - now);
-      console.log(`Rate limit reached. Waiting ${waitTime} seconds...`);
-      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
+    const MAX_RETRIES = 2;
+    const now = Date.now();
+    
+    // Enforce minimum delay between requests
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL_MS) {
+      const delayNeeded = this.MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest;
+      await new Promise((resolve) => setTimeout(resolve, delayNeeded));
     }
+    
+    // Check if we need to wait for rate limit reset
+    const nowInSeconds = Date.now() / 1000;
+    if (this.rateLimitRemaining <= 0 && this.rateLimitResetTime > nowInSeconds) {
+      const waitTime = Math.ceil(this.rateLimitResetTime - nowInSeconds);
+      console.log(`Rate limit exhausted. Waiting ${waitTime} seconds for reset...`);
+      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
+    } else if (
+      this.rateLimitRemaining <= this.LOW_RATE_LIMIT_THRESHOLD &&
+      this.rateLimitRemaining > 0
+    ) {
+      // Be more cautious when rate limit is low
+      const cautionDelay = 1000; // 1 second delay when running low
+      console.log(
+        `Rate limit low (${this.rateLimitRemaining} remaining). Adding ${cautionDelay}ms delay...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, cautionDelay));
+    }
+    
+    this.lastRequestTime = Date.now();
 
     const url = new URL(LISTENBRAINZ_API_BASE + endpoint);
     if (method === "GET") {
@@ -238,22 +264,31 @@ export default class ListenBrainzAPI {
       // Handle 429 rate limit error specifically
       if (response.status === 429) {
         await response.body?.cancel();
+        
+        if (retryCount >= MAX_RETRIES) {
+          const errorText = await response.text().catch(() => "{}");
+          return {
+            error: `ListenBrainz API error validating token: 429 - ${errorText}`,
+          };
+        }
+        
         const resetInSeconds = rateLimitResetIn
           ? parseInt(rateLimitResetIn, 10)
           : 60;
         console.log(
-          `Rate limit exceeded. Waiting ${resetInSeconds} seconds before retry...`,
+          `Rate limit exceeded (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Waiting ${resetInSeconds} seconds before retry...`,
         );
         await new Promise((resolve) =>
           setTimeout(resolve, resetInSeconds * 1000)
         );
-        // Retry the request once after waiting
+        // Retry the request with incremented retry count
         return this._callListenBrainzAPI(
           scrobbleToken,
           endpoint,
           params,
           method,
           body,
+          retryCount + 1,
         );
       }
 
