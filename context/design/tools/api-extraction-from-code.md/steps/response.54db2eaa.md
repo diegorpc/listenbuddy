@@ -1,14 +1,9 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
+---
+timestamp: 'Tue Oct 21 2025 16:34:03 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251021_163403.8c55eaa0.md]]'
+content_id: 54db2eaa71a7926358421760d1aab68a455b3c734411b52a688263004fff2a2d
+---
 
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
-
-[@backend-concept-development](../../background/backend-concept-development.md)
-
-[@MusicBrainzAPI](MusicBrainzAPI.md)
-
-# implement: MusicBrainzAPI
 # response:
 
 ```typescript

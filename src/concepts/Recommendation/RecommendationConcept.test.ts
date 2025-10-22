@@ -13,7 +13,7 @@ import { GeminiLLM } from "@utils/geminiLLM.ts";
 // environment, provided we reset it.
 let originalGeminiExecuteLLM: typeof GeminiLLM.prototype.executeLLM;
 
-const OUTPUT = false; // for verbose logging
+const OUTPUT = true; // for verbose logging
 // A default mock response for the LLM
 const mockLLMSuccessResponse = JSON.stringify([
   {
@@ -207,6 +207,11 @@ Deno.test("Recommendation Concept", async (t) => {
       assert(!result.error, `Expected no error, but got: ${result.error}`);
       assert(result.recommendations);
       assertEquals(result.recommendations.length, 2); // Should generate 2 unique recommendations from LLM mock
+      // itemName and reasoning should be present
+      for (const r of result.recommendations!) {
+        assert(typeof r.itemName === "string");
+        assert(typeof r.reasoning === "string");
+      }
 
       const storedRecommendations = await recommendationConcept.recommendations
         .find({ userId: userAId, item1: sourceItemAId }).toArray();
@@ -243,6 +248,10 @@ Deno.test("Recommendation Concept", async (t) => {
       assert(!result.error, `Expected no error, but got: ${result.error}`);
       assert(result.recommendations);
       assertEquals(result.recommendations.length, 3); // Should generate 3 from fallback logic
+      for (const r of result.recommendations!) {
+        assert(typeof r.itemName === "string");
+        assert(typeof r.reasoning === "string");
+      }
 
       const storedRecommendations = await fallbackConcept.recommendations.find({
         userId: userBId,
@@ -409,14 +418,27 @@ Deno.test("Recommendation Concept", async (t) => {
       });
       if (OUTPUT) console.log(result);
       assert(!result.error);
-      assert(result.items);
-      assertEquals(result.items.length, 3);
+      assert(result.itemsWithReasoning);
+      assertEquals(result.itemsWithReasoning!.length, 3);
 
       // Expect order: Positively feedbacked (rec2, rec4), then no feedback (rec5). rec6 (negative) should be excluded.
-      assertEquals(result.items[0], recommendedItem2Id); // Higher confidence positive
-      assertEquals(result.items[1], recommendedItem4Id); // Lower confidence positive
-      assertEquals(result.items[2], recommendedItem5Id); // No feedback
-      assert(!result.items.includes(recommendedItem6Id)); // Negatively feedbacked item is excluded
+      const iw = result.itemsWithReasoning!;
+      assertEquals(iw[0].item, recommendedItem2Id); // Higher confidence positive
+      assertEquals(iw[1].item, recommendedItem4Id); // Lower confidence positive
+      assertEquals(iw[2].item, recommendedItem5Id); // No feedback
+
+      // Verify structure: each entry has item, itemName, reasoning, and confidence
+      for (const entry of iw) {
+        assert(typeof entry.item === "string");
+        assert(typeof entry.itemName === "string");
+        assert(typeof entry.reasoning === "string");
+        assert(typeof entry.confidence === "number");
+        assert(entry.confidence >= 0 && entry.confidence <= 1);
+      }
+
+      // Verify rec6 (negative feedback) is not included
+      const items = iw.map((e) => e.item);
+      assert(!items.includes(recommendedItem6Id)); // Negatively feedbacked item is excluded
     },
   );
 

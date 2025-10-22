@@ -252,4 +252,5 @@ export default class UserConcept {
     return {};
   }
 }
+
 ```

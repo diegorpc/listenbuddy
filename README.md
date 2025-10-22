@@ -32,6 +32,7 @@
 
 ## Test Results
 ![](Pasted%20image%2020251019091700.png)
+
 ## Design Notes
 
 Many of the concepts underwent heavy changes or were reimagined, taking into account the feedback from Assignment 2. On a high level, all interactions with the ListenBrainz and MusicBrainz APIs were put in their own wrapper concepts. Recommendations were also changed to work off of MusicBrainz queries, and do the LLM refinement later with just natural language, basically. I copied the geminiLLM service from the LLM prep assignment to be able to make the Recommendation more modular.

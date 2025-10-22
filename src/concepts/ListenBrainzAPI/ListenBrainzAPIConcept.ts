@@ -13,12 +13,15 @@ type User = ID;
 
 // Define valid time ranges for API calls as per ListenBrainz documentation
 const VALID_TIME_RANGES = [
-  "all_time",
-  "year",
-  "half_year",
-  "quarter_year",
-  "month",
+  "this_week",
+  "this_month",
+  "this_year",
   "week",
+  "month",
+  "quarter",
+  "year",
+  "half_yearly",
+  "all_time",
 ];
 
 // Define allowed ListenBrainz stat types for caching
@@ -27,7 +30,8 @@ type ListenBrainzStatType =
   | "releases"
   | "release-groups"
   | "recordings"
-  | "activity"; // Added for getListeningActivity
+  | "activity" // Added for getListeningActivity
+  | "daily-activity"; // Added for getDailyActivity
 
 // --- State Interfaces ---
 
@@ -155,12 +159,55 @@ interface ListeningActivityPeriod {
 
 type ListeningActivity = ListeningActivityPeriod[];
 
+// Daily Activity types (per-hour listens grouped by weekday)
+type Hour =
+  | 0
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5
+  | 6
+  | 7
+  | 8
+  | 9
+  | 10
+  | 11
+  | 12
+  | 13
+  | 14
+  | 15
+  | 16
+  | 17
+  | 18
+  | 19
+  | 20
+  | 21
+  | 22
+  | 23;
+
+interface DailyActivityHour {
+  hour: Hour;
+  listen_count: number;
+}
+
+type Weekday =
+  | "Monday"
+  | "Tuesday"
+  | "Wednesday"
+  | "Thursday"
+  | "Friday"
+  | "Saturday"
+  | "Sunday";
+
+type DailyActivity = Record<Weekday, DailyActivityHour[]>;
+
 /**
  * @concept ListenBrainzAPI[User]
  * @purpose retrieve user listening statistics and history from ListenBrainz to display top artists, albums, and tracks over various time periods
  * @principle after a user associates their ListenBrainz token, the API fetches their scrobble data to show top artists, releases, and songs over any time range, enabling the app to display personalized listening statistics.
  */
-export default class ListenBrainzAPI {
+export default class ListenBrainzAPIConcept {
   private statsCache: Collection<StatisticsCacheDoc>;
   private listenHistoryCache: Collection<ListenHistoryDoc>;
   private readonly CACHE_TTL_MS = 3600 * 1000; // 1 hour for statistics cache
@@ -194,19 +241,23 @@ export default class ListenBrainzAPI {
   ): Promise<T | { error: string }> {
     const MAX_RETRIES = 2;
     const now = Date.now();
-    
+
     // Enforce minimum delay between requests
     const timeSinceLastRequest = now - this.lastRequestTime;
     if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL_MS) {
       const delayNeeded = this.MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest;
       await new Promise((resolve) => setTimeout(resolve, delayNeeded));
     }
-    
+
     // Check if we need to wait for rate limit reset
     const nowInSeconds = Date.now() / 1000;
-    if (this.rateLimitRemaining <= 0 && this.rateLimitResetTime > nowInSeconds) {
+    if (
+      this.rateLimitRemaining <= 0 && this.rateLimitResetTime > nowInSeconds
+    ) {
       const waitTime = Math.ceil(this.rateLimitResetTime - nowInSeconds);
-      console.log(`Rate limit exhausted. Waiting ${waitTime} seconds for reset...`);
+      console.log(
+        `Rate limit exhausted. Waiting ${waitTime} seconds for reset...`,
+      );
       await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
     } else if (
       this.rateLimitRemaining <= this.LOW_RATE_LIMIT_THRESHOLD &&
@@ -219,7 +270,7 @@ export default class ListenBrainzAPI {
       );
       await new Promise((resolve) => setTimeout(resolve, cautionDelay));
     }
-    
+
     this.lastRequestTime = Date.now();
 
     const url = new URL(LISTENBRAINZ_API_BASE + endpoint);
@@ -264,19 +315,22 @@ export default class ListenBrainzAPI {
       // Handle 429 rate limit error specifically
       if (response.status === 429) {
         await response.body?.cancel();
-        
+
         if (retryCount >= MAX_RETRIES) {
           const errorText = await response.text().catch(() => "{}");
           return {
-            error: `ListenBrainz API error validating token: 429 - ${errorText}`,
+            error:
+              `ListenBrainz API error validating token: 429 - ${errorText}`,
           };
         }
-        
+
         const resetInSeconds = rateLimitResetIn
           ? parseInt(rateLimitResetIn, 10)
           : 60;
         console.log(
-          `Rate limit exceeded (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Waiting ${resetInSeconds} seconds before retry...`,
+          `Rate limit exceeded (attempt ${retryCount + 1}/${
+            MAX_RETRIES + 1
+          }). Waiting ${resetInSeconds} seconds before retry...`,
         );
         await new Promise((resolve) =>
           setTimeout(resolve, resetInSeconds * 1000)
@@ -674,6 +728,133 @@ export default class ListenBrainzAPI {
     );
 
     return { activity };
+  }
+
+  /**
+   * @action getDailyActivity
+   * @requires user has valid scrobbleToken, timeRange is valid (defaults to "all_time")
+   * @effect fetches daily activity showing number of listens per hour for each weekday over a period.
+   */
+  async getDailyActivity(
+    { user, scrobbleToken, timeRange = "all_time" }: {
+      user: User;
+      scrobbleToken: string;
+      timeRange?: string;
+    },
+  ): Promise<
+    {
+      dailyActivity?: DailyActivity;
+      from_ts?: number;
+      to_ts?: number;
+      last_updated?: number;
+      stats_range?: string;
+      user_id?: string;
+      error?: string;
+    }
+  > {
+    // 1. Validate inputs
+    if (!VALID_TIME_RANGES.includes(timeRange)) {
+      return { error: `Invalid timeRange: ${timeRange}` };
+    }
+
+    const usernameResult = await this._getUsernameFromToken(scrobbleToken);
+    if ("error" in usernameResult) {
+      return { error: usernameResult.error };
+    }
+    const username = usernameResult.username;
+
+    // Check cache
+    const statType: ListenBrainzStatType = "daily-activity";
+    const cached = await this.statsCache.findOne({ user, statType, timeRange });
+    if (
+      cached &&
+      (new Date().getTime() - cached.lastUpdated.getTime()) < this.CACHE_TTL_MS
+    ) {
+      const data = cached.data as unknown as {
+        daily_activity?: DailyActivity;
+        from_ts?: number;
+        to_ts?: number;
+        last_updated?: number;
+        stats_range?: string;
+        user_id?: string;
+      };
+      return {
+        dailyActivity: data.daily_activity || ({} as DailyActivity),
+        from_ts: data.from_ts,
+        to_ts: data.to_ts,
+        last_updated: data.last_updated,
+        stats_range: data.stats_range,
+        user_id: data.user_id,
+      };
+    }
+
+    // 2. Fetch from API
+    const result = await this._callListenBrainzAPI<
+      {
+        payload: {
+          from_ts: number;
+          last_updated: number;
+          daily_activity: DailyActivity;
+          stats_range: string;
+          to_ts: number;
+          user_id: string;
+        };
+      }
+    >(
+      scrobbleToken,
+      `stats/user/${username}/daily-activity`,
+      { range: timeRange },
+    );
+
+    if ("error" in result) {
+      return result;
+    }
+
+    const payload: {
+      daily_activity?: DailyActivity;
+      from_ts?: number;
+      to_ts?: number;
+      last_updated?: number;
+      stats_range?: string;
+      user_id?: string;
+    } | undefined = result.payload;
+    const {
+      daily_activity,
+      from_ts,
+      to_ts,
+      last_updated,
+      stats_range,
+      user_id,
+    } = payload ?? {};
+
+    // 3. Update cache
+    await this.statsCache.updateOne(
+      { user, statType, timeRange },
+      {
+        $set: {
+          data: {
+            daily_activity,
+            from_ts,
+            to_ts,
+            last_updated,
+            stats_range,
+            user_id,
+          },
+          lastUpdated: new Date(),
+        },
+        $setOnInsert: { _id: freshID(), user, statType, timeRange },
+      },
+      { upsert: true },
+    );
+
+    return {
+      dailyActivity: daily_activity,
+      from_ts,
+      to_ts,
+      last_updated,
+      stats_range,
+      user_id,
+    };
   }
 
   /**

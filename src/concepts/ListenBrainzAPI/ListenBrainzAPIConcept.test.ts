@@ -5,7 +5,7 @@ import {
   assertNotEquals,
 } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
-import ListenBrainzAPI from "./ListenBrainzAPI.ts";
+import ListenBrainzAPIConcept from "./ListenBrainzAPIConcept.ts";
 import { ID } from "@utils/types.ts";
 
 const OUTPUT = false; //true for verbose debugging
@@ -28,7 +28,7 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
   }
 
   const [db, client] = await testDb();
-  const lbApi = new ListenBrainzAPI(db);
+  const lbApi = new ListenBrainzAPIConcept(db);
 
   // Before all tests, ensure a clean state
   await lbApi.clearCache({ user: TEST_USER_ID });
@@ -374,6 +374,136 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
     "Action: getListeningActivity - with invalid timeRange",
     async () => {
       const result = await lbApi.getListeningActivity({
+        user: TEST_USER_ID,
+        scrobbleToken: LISTENBRAINZ_TOKEN,
+        timeRange: "bad_range",
+      });
+      if (OUTPUT) console.log(result);
+      assertExists(result.error);
+      assertEquals(result.error, "Invalid timeRange: bad_range");
+    },
+  );
+
+  await t.step(
+    "Action: getDailyActivity - with valid parameters",
+    async () => {
+      const result = await lbApi.getDailyActivity({
+        user: TEST_USER_ID,
+        scrobbleToken: LISTENBRAINZ_TOKEN,
+        timeRange: "all_time",
+      });
+      if (OUTPUT) console.log(result);
+      assertExists(
+        result.dailyActivity,
+        `Expected daily activity, but got error: ${result.error}`,
+      );
+      const weekdays = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ] as const;
+      if (result.dailyActivity) {
+        for (const day of weekdays) {
+          const arr = (result.dailyActivity as Record<string, unknown>)[
+            day
+          ] as unknown;
+          if (arr !== undefined) {
+            // shape checks (allow empty arrays)
+            assertEquals(Array.isArray(arr), true, `${day} should be an array`);
+            const list = arr as Array<{ hour: number; listen_count: number }>;
+            for (const item of list) {
+              assertEquals(
+                typeof item.hour,
+                "number",
+                `${day} hour should be a number`,
+              );
+              // hour is 0..23
+              if (item.hour < 0 || item.hour > 23) {
+                throw new Error(`hour out of range in ${day}: ${item.hour}`);
+              }
+              assertEquals(
+                typeof item.listen_count,
+                "number",
+                `${day} listen_count should be a number`,
+              );
+            }
+          }
+        }
+      }
+      // ancillary metadata is optional but if present should be numbers/strings
+      if (result.from_ts !== undefined) {
+        assertEquals(typeof result.from_ts, "number");
+      }
+      if (result.to_ts !== undefined) {
+        assertEquals(typeof result.to_ts, "number");
+      }
+      if (result.last_updated !== undefined) {
+        assertEquals(typeof result.last_updated, "number");
+      }
+      if (result.stats_range !== undefined) {
+        assertEquals(typeof result.stats_range, "string");
+      }
+      if (result.user_id !== undefined) {
+        assertEquals(typeof result.user_id, "string");
+      }
+    },
+  );
+
+  await t.step(
+    "Action: getDailyActivity - caching mechanism",
+    async () => {
+      await lbApi.clearCache({ user: TEST_USER_ID });
+
+      const first = await lbApi.getDailyActivity({
+        user: TEST_USER_ID,
+        scrobbleToken: LISTENBRAINZ_TOKEN,
+        timeRange: "all_time",
+      });
+      if (OUTPUT) console.log(first);
+      assertExists(first.dailyActivity);
+
+      const initial = await db.collection(
+        "ListenBrainzAPI.statisticsCache",
+      ).findOne({
+        user: TEST_USER_ID,
+        statType: "daily-activity",
+        timeRange: "all_time",
+      });
+      assertExists(initial, "Expected cache entry for daily-activity.");
+      const initialUpdated = initial.lastUpdated;
+
+      const second = await lbApi.getDailyActivity({
+        user: TEST_USER_ID,
+        scrobbleToken: LISTENBRAINZ_TOKEN,
+        timeRange: "all_time",
+      });
+      if (OUTPUT) console.log(second);
+      assertExists(second.dailyActivity);
+
+      const subsequent = await db.collection(
+        "ListenBrainzAPI.statisticsCache",
+      ).findOne({
+        user: TEST_USER_ID,
+        statType: "daily-activity",
+        timeRange: "all_time",
+      });
+      assertExists(subsequent);
+      assertEquals(
+        subsequent.lastUpdated.getTime(),
+        initialUpdated.getTime(),
+        "Expected lastUpdated to remain the same on cache hit for daily-activity.",
+      );
+    },
+  );
+
+  await t.step(
+    "Action: getDailyActivity - with invalid timeRange",
+    async () => {
+      const result = await lbApi.getDailyActivity({
         user: TEST_USER_ID,
         scrobbleToken: LISTENBRAINZ_TOKEN,
         timeRange: "bad_range",

@@ -198,6 +198,39 @@ Deno.test("UserConcept", async (t) => {
     );
 
     await t_step.step(
+      "should return username and no token fields when none associated",
+      async () => {
+        const result = await userConcept.startSession({ username, password });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.username, username);
+        assertEquals(result.scrobbleToken, undefined);
+        assertEquals(result.listenBrainzName, undefined);
+      },
+    );
+
+    await t_step.step(
+      "should return username and token fields when associated",
+      async () => {
+        const scrobbleToken = "associated_scrobble_token";
+        const listenBrainzName = "associated_lb_name";
+
+        const assoc = await userConcept.associateToken({
+          user: userId,
+          scrobbleToken,
+          listenBrainzName,
+        });
+        if (OUTPUT) console.log(assoc);
+        assertEquals(assoc.error, undefined);
+
+        const result = await userConcept.startSession({ username, password });
+        if (OUTPUT) console.log(result);
+        assertEquals(result.username, username);
+        assertEquals(result.scrobbleToken, scrobbleToken);
+        assertEquals(result.listenBrainzName, listenBrainzName);
+      },
+    );
+
+    await t_step.step(
       "should return an error for incorrect password",
       async () => {
         const result = await userConcept.startSession({

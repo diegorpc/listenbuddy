@@ -1,5 +1,14 @@
+---
+timestamp: 'Tue Oct 21 2025 16:13:52 GMT-0400 (Eastern Daylight Time)'
+parent: '[[..\20251021_161352.5321a711.md]]'
+content_id: cbf4101d089f0d10df567428a9d45d4a2e3b5d5ca80f4ae773e23a1701f0d7e6
+---
+
+# file: src/Recommendation/Recommendation.ts
+
+````typescript
 import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts";
+import { Empty, ID } from "@utils/types.ts"; 
 import { freshID } from "@utils/database.ts";
 import { GeminiLLM } from "@utils/geminiLLM.ts";
 
@@ -40,9 +49,8 @@ interface MusicBrainzTag {
  *
  * A set of `Recommendations` with:
  *   a userId of type ID (referencing the user who received/gave feedback on this recommendation)
- *   a item1 of type Item (MBID of the source item for the recommendation)
- *   a item2 of type Item (MBID of the recommended item)
- *   a itemName of type String (human-readable name for item2)
+ *   a item1 of type Item (the source item for the recommendation)
+ *   a item2 of type Item (the recommended item)
  *   a reasoning of type String
  *   a confidence of type Number (score from 0 to 1, indicating LLM confidence or similarity strength)
  *   an optional feedback of type Boolean (T = positive, F = negative)
@@ -51,9 +59,8 @@ interface MusicBrainzTag {
 interface RecommendationDoc {
   _id: ID;
   userId: User;
-  item1: Item; // MBID of the source item for the recommendation
-  item2: Item; // MBID of the recommended item
-  itemName: string; // Human-readable name/title for the recommended item (item2)
+  item1: Item; // The source item for the recommendation
+  item2: Item; // The recommended item
   reasoning: string;
   confidence: number;
   feedback: boolean | null; // true for positive, false for negative, null for no feedback
@@ -75,7 +82,7 @@ interface LLMRecommendationOutput {
  */
 type FeedbackType = boolean; // True for positive, false for negative
 
-export default class RecommendationConcept {
+export default class Recommendation {
   // Purpose: suggest personalized music based on MusicBrainz queries, refining them with AI and iterating through user feedback to refine recommendations
 
   public recommendations: Collection<RecommendationDoc>;
@@ -102,8 +109,8 @@ export default class RecommendationConcept {
    * @purpose suggest personalized music based on MusicBrainz queries, refining them with AI and iterating through user feedback to refine recommendations
    * @principle after adding items to a user's library, generate personalized recommendations either through MusicBrainz queries, using LLM analysis to refine these. Users can provide feedback on these suggestions, which is incorporated into future recommendations for that specific user.
    *
-   * @requires `userId` is valid, `sourceItem` should be an MBID (falls back to sourceItemMetadata.id if not), `amount` of recommendations is positive. `sourceItemMetadata`, `similarArtists`, `similarRecordings`, `similarReleaseGroups` are provided (e.g., from MusicBrainzAPI via synchronization).
-   * @effect Creates new `Recommendation` objects for the given `userId` and `sourceItem` based on provided external data and LLM refinement (incorporating `_getFeedbackHistory` from this concept's state). Returns the set of created recommendations. The sourceItemMetadata.id is used as the authoritative MBID for item1.
+   * @requires `userId` is valid, `sourceItem` exists in a valid format, `amount` of recommendations is positive. `sourceItemMetadata`, `similarArtists`, `similarRecordings`, `similarReleaseGroups` are provided (e.g., from MusicBrainzAPI via synchronization).
+   * @effect Creates new `Recommendation` objects for the given `userId` and `sourceItem` based on provided external data and LLM refinement (incorporating `_getFeedbackHistory` from this concept's state). Returns the set of created recommendations.
    *
    * This action generates new recommendations for a given source item and user. It receives external data
    * (metadata, similar items from MusicBrainzAPI via syncs), retrieves user-specific feedback from its
@@ -112,28 +119,26 @@ export default class RecommendationConcept {
    */
   async generate(params: {
     userId: User;
-    sourceItem: Item; // Should be MBID; sourceItemMetadata.id is used as authoritative source
+    sourceItem: Item;
     amount: number;
-    sourceItemMetadata: MusicBrainzEntity; // Metadata for the source item (artist, recording, release-group, etc.); id field must contain the MBID
+    sourceItemMetadata: MusicBrainzEntity; // Metadata for the source item (artist, recording, release-group, etc.)
     similarArtists: {
       mbid: string;
       name: string;
       score: number;
-      sharedGenres: string[];
+      genres: string[];
     }[];
     similarRecordings: {
       mbid: string;
-      title: string;
-      artist?: string;
+      name: string;
       score: number;
-      sharedGenres: string[];
+      genres: string[];
     }[];
     similarReleaseGroups: {
       mbid: string;
-      title: string;
-      artist?: string;
+      name: string;
       score: number;
-      sharedGenres: string[];
+      genres: string[];
     }[];
   }): Promise<{ recommendations?: RecommendationDoc[]; error?: string }> {
     const {
@@ -150,9 +155,6 @@ export default class RecommendationConcept {
       return { error: "Invalid user ID, source item or amount specified." };
     }
 
-    // Use the MBID from metadata as the authoritative source item ID
-    const sourceItemMBID = (sourceItemMetadata?.id || sourceItem) as Item;
-
     // Fetch user-specific feedback history from this concept's state for the LLM prompt
     const feedbackHistoryResult = await this._getFeedbackHistory({
       userId: userId,
@@ -161,17 +163,11 @@ export default class RecommendationConcept {
 
     // Fallback if LLM is not configured
     if (!this.geminiLLM) {
-      return this.generateFallbackRecommendations(
-        userId,
-        sourceItemMBID,
-        amount,
-        {
-          similarArtists,
-          similarRecordings,
-          similarReleaseGroups,
-        },
-        userFeedbackHistory,
-      );
+      return this.generateFallbackRecommendations(userId, sourceItem, amount, {
+        similarArtists,
+        similarRecordings,
+        similarReleaseGroups,
+      }, userFeedbackHistory);
     }
 
     // Format MusicBrainz relationships and attributes
@@ -189,7 +185,7 @@ export default class RecommendationConcept {
       mbRelationships.push(
         `- Similar Recordings: ${
           similarRecordings.map((r) =>
-            `${r.title} (MBID: ${r.mbid}, Score: ${r.score})`
+            `${r.name} (MBID: ${r.mbid}, Score: ${r.score})`
           ).join(", ")
         }`,
       );
@@ -198,7 +194,7 @@ export default class RecommendationConcept {
       mbRelationships.push(
         `- Similar Albums/Release Groups: ${
           similarReleaseGroups.map((rg) =>
-            `${rg.title} (MBID: ${rg.mbid}, Score: ${rg.score})`
+            `${rg.name} (MBID: ${rg.mbid}, Score: ${rg.score})`
           ).join(", ")
         }`,
       );
@@ -226,7 +222,7 @@ export default class RecommendationConcept {
 
     const prompt = this._buildRecommendationPrompt({
       userId,
-      sourceItem: sourceItemMBID,
+      sourceItem,
       amount,
       sourceItemMetadata,
       sourceGenres,
@@ -259,15 +255,14 @@ export default class RecommendationConcept {
 
         // Ensure valid MBID, not recommending the source itself, and not an item already in user's feedback history
         if (
-          rec.mbid && rec.mbid !== sourceItemMBID &&
+          rec.mbid && rec.mbid !== sourceItem &&
           !existingFeedbackItems.has(rec.mbid as Item)
         ) {
           newRecommendations.push({
             _id: freshID(),
             userId: userId, // Associate with the user
-            item1: sourceItemMBID,
+            item1: sourceItem,
             item2: rec.mbid as Item,
-            itemName: rec.name,
             reasoning: rec.reasoning,
             confidence: Math.max(0, Math.min(1, rec.confidence)), // Clamp confidence
             feedback: null, // No feedback initially
@@ -283,11 +278,7 @@ export default class RecommendationConcept {
       return { recommendations: newRecommendations };
     } catch (e) {
       console.error("Error generating recommendations with LLM:", e);
-      return {
-        error: `Failed to generate recommendations: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      };
+      return { error: `Failed to generate recommendations: ${e.message}` };
     }
   }
 
@@ -297,28 +288,26 @@ export default class RecommendationConcept {
    */
   private async generateFallbackRecommendations(
     userId: User,
-    sourceItemMBID: Item,
+    sourceItem: Item,
     amount: number,
     similarData: {
       similarArtists: {
         mbid: string;
         name: string;
         score: number;
-        sharedGenres: string[];
+        genres: string[];
       }[];
       similarRecordings: {
         mbid: string;
-        title: string;
-        artist?: string;
+        name: string;
         score: number;
-        sharedGenres: string[];
+        genres: string[];
       }[];
       similarReleaseGroups: {
         mbid: string;
-        title: string;
-        artist?: string;
+        name: string;
         score: number;
-        sharedGenres: string[];
+        genres: string[];
       }[];
     },
     userFeedbackHistory: {
@@ -348,7 +337,7 @@ export default class RecommendationConcept {
     similarRecordings.forEach((r) =>
       allSimilarItems.push({
         mbid: r.mbid,
-        name: r.title,
+        name: r.name,
         type: "recording",
         score: r.score,
       })
@@ -356,7 +345,7 @@ export default class RecommendationConcept {
     similarReleaseGroups.forEach((rg) =>
       allSimilarItems.push({
         mbid: rg.mbid,
-        name: rg.title,
+        name: rg.name,
         type: "release-group",
         score: rg.score,
       })
@@ -373,7 +362,7 @@ export default class RecommendationConcept {
     allSimilarItems
       .sort((a, b) => b.score - a.score)
       .filter((item) =>
-        item.mbid !== sourceItemMBID &&
+        item.mbid !== sourceItem &&
         !existingFeedbackItems.has(item.mbid as Item)
       ) // Don't recommend source or already feedbacked items
       .slice(0, amount * 2) // Take a bit more to ensure we can pick 'amount' unique items
@@ -386,9 +375,8 @@ export default class RecommendationConcept {
           newRecommendations.push({
             _id: freshID(),
             userId: userId, // Associate with the user
-            item1: sourceItemMBID,
+            item1: sourceItem,
             item2: item.mbid as Item,
-            itemName: item.name,
             reasoning:
               `Based on its similarity as a ${item.type} and shared genres. (LLM not available)`,
             confidence: item.score / 100, // Assuming score is out of 100, normalize
@@ -416,17 +404,7 @@ export default class RecommendationConcept {
    */
   async getRecommendations(
     params: { userId: User; item: Item; amount: number },
-  ): Promise<
-    {
-      itemsWithReasoning?: {
-        item: Item;
-        itemName: string;
-        reasoning: string;
-        confidence: number;
-      }[];
-      error?: string;
-    }
-  > {
+  ): Promise<{ items?: Item[]; error?: string }> {
     const { userId, item, amount } = params;
     if (!userId || !item || amount <= 0) {
       return { error: "Invalid user ID, item or amount specified." };
@@ -444,14 +422,11 @@ export default class RecommendationConcept {
         feedback: boolean | null;
         confidence: number;
         createdAt: Date;
-        reasoning: string;
-        itemName: string;
       }[] = [];
       const seenItems = new Set<Item>();
 
       for (const rec of allRelatedRecommendations) {
         const recommendedId = rec.item1 === item ? rec.item2 : rec.item1;
-        const recommendedName = rec.item1 === item ? rec.itemName : ""; // name may be unknown if 'item' equals item2
 
         if (recommendedId === item || seenItems.has(recommendedId)) {
           continue; // Skip the source item itself and duplicates
@@ -462,8 +437,6 @@ export default class RecommendationConcept {
           feedback: rec.feedback,
           confidence: rec.confidence,
           createdAt: rec.createdAt,
-          reasoning: rec.reasoning,
-          itemName: recommendedName,
         });
         seenItems.add(recommendedId); // Mark as seen to avoid re-adding
       }
@@ -487,34 +460,20 @@ export default class RecommendationConcept {
         return b.createdAt.getTime() - a.createdAt.getTime();
       });
 
-      const finalWithReasoning: {
-        item: Item;
-        itemName: string;
-        reasoning: string;
-        confidence: number;
-      }[] = [];
+      const finalRecommendedItems: Item[] = [];
       for (const candidate of candidates) {
-        if (finalWithReasoning.length >= amount) break;
+        if (finalRecommendedItems.length >= amount) break;
 
         // Strictly exclude items with negative feedback
         if (candidate.feedback !== false) {
-          finalWithReasoning.push({
-            item: candidate.recommendedItem,
-            itemName: candidate.itemName,
-            reasoning: candidate.reasoning,
-            confidence: candidate.confidence,
-          });
+          finalRecommendedItems.push(candidate.recommendedItem);
         }
       }
 
-      return { itemsWithReasoning: finalWithReasoning };
+      return { items: finalRecommendedItems };
     } catch (e) {
       console.error("Error retrieving recommendations:", e);
-      return {
-        error: `Failed to retrieve recommendations: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      };
+      return { error: `Failed to retrieve recommendations: ${e.message}` };
     }
   }
 
@@ -551,11 +510,7 @@ export default class RecommendationConcept {
       return {};
     } catch (e) {
       console.error("Error providing feedback:", e);
-      return {
-        error: `Failed to provide feedback: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      };
+      return { error: `Failed to provide feedback: ${e.message}` };
     }
   }
 
@@ -576,11 +531,7 @@ export default class RecommendationConcept {
       return {};
     } catch (e) {
       console.error("Error clearing recommendations:", e);
-      return {
-        error: `Failed to clear recommendations: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      };
+      return { error: `Failed to clear recommendations: ${e.message}` };
     }
   }
 
@@ -623,11 +574,7 @@ export default class RecommendationConcept {
       return { history: history };
     } catch (e) {
       console.error("Error retrieving feedback history:", e);
-      return {
-        error: `Failed to retrieve feedback history: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      };
+      return { error: `Failed to retrieve feedback history: ${e.message}` };
     }
   }
 
@@ -657,14 +604,6 @@ export default class RecommendationConcept {
       positiveFeedback,
       negativeFeedback,
     } = params;
-    console.log("Building recommendation prompt for user", userId);
-    console.log("Source item:", sourceItemMetadata);
-    console.log("Amount:", amount);
-    console.log("Source genres:", sourceGenres);
-    console.log("Source tags:", sourceTags);
-    console.log("MB relationships:", mbRelationships);
-    console.log("Positive feedback:", positiveFeedback);
-    console.log("Negative feedback:", negativeFeedback);
 
     return `You are a music recommendation assistant. Generate exactly ${amount} unique recommendations based on the provided information for user ${userId}.
     Provide the output as a JSON array of objects, where each object has 'name' (string), 'mbid' (string, MusicBrainz ID), 'reasoning' (string, 2-3 sentences), and 'confidence' (number between 0 and 1).
@@ -697,11 +636,7 @@ Generate ${amount} recommendations with:
 3. Natural language reasoning (2-3 sentences)
 4. Confidence score (0-1)
 
-Prioritize items that match positive feedback patterns and avoid negative patterns. Ensure recommended MBIDs are unique and different from the source item MBID and previously liked/disliked items from this user's feedback history.
-
-CRITICAL:
-DO NOT generate recommendations based off non-musical attributes of the source item, like the title of a song.
-DO NOT create MBIDs that do not exist in the MusicBrainz database. If it is not an MBID that was given as input, consider it as invalid.`;
+Prioritize items that match positive feedback patterns and avoid negative patterns. Ensure recommended MBIDs are unique and different from the source item MBID and previously liked/disliked items from this user's feedback history.`;
   }
 
   /**
@@ -725,3 +660,4 @@ DO NOT create MBIDs that do not exist in the MusicBrainz database. If it is not 
     }
   }
 }
+````

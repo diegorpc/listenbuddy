@@ -9,7 +9,7 @@ import {
 } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
-import MusicBrainzAPI from "./MusicBrainzAPI.ts";
+import MusicBrainzAPIConcept from "./MusicBrainzAPIConcept.ts";
 
 const OUTPUT = false; // for verbose debugging
 
@@ -29,7 +29,7 @@ const isError = (result: any): result is { error: string } => {
 
 Deno.test("MusicBrainzAPI Concept", async (t) => {
   const [db, client] = await testDb();
-  const musicBrainzAPI = new MusicBrainzAPI(db);
+  const musicBrainzAPI = new MusicBrainzAPIConcept(db);
 
   await t.step("should initialize collections", async () => {
     assertExists(musicBrainzAPI["entityCache"]);
