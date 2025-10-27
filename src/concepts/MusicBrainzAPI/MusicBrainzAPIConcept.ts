@@ -747,6 +747,8 @@ export default class MusicBrainzAPIConcept {
       (a: MBTag, b: MBTag) => b.count - a.count,
     );
 
+    console.log("genres for ", artistMbid, ": ", genres);
+
     if (genres.length === 0) {
       return {
         similarArtists: [],
@@ -948,7 +950,8 @@ export default class MusicBrainzAPIConcept {
    * getSimilarRecordings(recordingMbid: String, limit: Number): (similarRecordings: List<Recording>)
    *
    * requires: recordingMbid is valid
-   * effect: finds similar recordings based on genre/tag overlap and artist similarity. Returns a scored list of similar recordings.
+   * effect: finds similar recordings based on genre/tag overlap from their albums and artist similarity. Returns a scored list of similar recordings.
+   * Note: Since recordings typically lack genre data, this method fetches the recording's releases and uses the first release's genres/tags.
    */
   async getSimilarRecordings(
     { recordingMbid, limit = 10 }: {
@@ -969,10 +972,11 @@ export default class MusicBrainzAPIConcept {
   > {
     if (!recordingMbid) return { error: "recordingMbid is required." };
 
-    // Step 1: Get the source recording's full details with tags and artist
+    // Step 1: Get the source recording with releases to fetch album genres
+    // Recordings typically don't have genre data, so we get it from the album
     const recordingResult = await this.lookupRecording({
       mbid: recordingMbid,
-      includes: ["tags", "artist-credits"],
+      includes: ["releases", "artist-credits"],
     });
 
     if ("error" in recordingResult || !recordingResult.recording) {
@@ -980,14 +984,33 @@ export default class MusicBrainzAPIConcept {
     }
 
     const sourceRecording = recordingResult.recording;
-    const tags = (sourceRecording.tags || []).sort(
-      (a: MBTag, b: MBTag) => b.count - a.count,
-    );
-
+    
     // Get artist info for additional context
     const artistCredit = sourceRecording["artist-credit"]?.[0];
     const artistName = artistCredit?.name || artistCredit?.artist?.name;
     const artistId = artistCredit?.artist?.id;
+
+    // Step 2: Fetch genres from the first available release (album) instead of the recording
+    let tags: MBTag[] = [];
+    if (sourceRecording.releases && sourceRecording.releases.length > 0) {
+      // Get the first release's genres - prefer official releases
+      const officialRelease = sourceRecording.releases.find(r => r.status === "Official") || sourceRecording.releases[0];
+      
+      const releaseGenresResult = await this.getEntityGenres({
+        mbid: officialRelease.id as ID,
+        entityType: "release",
+      });
+      
+      if (!("error" in releaseGenresResult)) {
+        // Combine genres and tags, prioritizing genres
+        tags = [
+          ...(releaseGenresResult.genres || []),
+          ...(releaseGenresResult.tags || [])
+        ].sort((a: MBTag, b: MBTag) => b.count - a.count);
+      }
+    }
+
+    console.log("tags for recording ", recordingMbid, " (from album): ", tags);
 
     if (tags.length === 0 && !artistId) {
       return {
@@ -1036,21 +1059,39 @@ export default class MusicBrainzAPIConcept {
             continue;
           }
 
-          // Fetch full recording details to verify tags
+          // Fetch full recording details with releases to get album genres
           const candidateResult = await this.lookupRecording({
             mbid: recResult.id as ID,
-            includes: ["tags", "artist-credits"],
+            includes: ["releases", "artist-credits"],
           });
 
           if ("error" in candidateResult || !candidateResult.recording) {
             continue;
           }
 
-          const candidateTags = candidateResult.recording.tags || [];
           const candidateArtistCredit = candidateResult
             .recording["artist-credit"]?.[0];
           const candidateArtistName = candidateArtistCredit?.name ||
             candidateArtistCredit?.artist?.name;
+
+          // Fetch genres from the candidate recording's album
+          let candidateTags: MBTag[] = [];
+          if (candidateResult.recording.releases && candidateResult.recording.releases.length > 0) {
+            const candidateRelease = candidateResult.recording.releases.find(r => r.status === "Official") || 
+                                     candidateResult.recording.releases[0];
+            
+            const candidateGenresResult = await this.getEntityGenres({
+              mbid: candidateRelease.id as ID,
+              entityType: "release",
+            });
+            
+            if (!("error" in candidateGenresResult)) {
+              candidateTags = [
+                ...(candidateGenresResult.genres || []),
+                ...(candidateGenresResult.tags || [])
+              ].sort((a: MBTag, b: MBTag) => b.count - a.count);
+            }
+          }
 
           // Calculate shared tags and score
           const sharedTags = new Set<string>();
@@ -1191,6 +1232,7 @@ export default class MusicBrainzAPIConcept {
     const artistCredit = sourceReleaseGroup["artist-credit"]?.[0];
     const artistName = artistCredit?.name || artistCredit?.artist?.name;
     const artistId = artistCredit?.artist?.id;
+    console.log("tags for release group ", releaseGroupMbid, ": ", tags);
 
     if (tags.length === 0 && !artistId) {
       return {

@@ -317,13 +317,13 @@
 
 ### POST /api/MusicBrainzAPI/getSimilarRecordings
 
-**Description:** finds similar recordings (songs/tracks) based on genre/tag overlap and artist similarity. Returns scored list with shared genres and artist information.
+**Description:** finds similar recordings (songs/tracks) based on genre/tag overlap from their albums and artist similarity. Since recordings typically lack genre data, this method fetches genres from the recording's releases (albums). Returns scored list with shared genres and artist information.
 
 **Requirements:**
 - recordingMbid is valid
 
 **Effects:**
-- finds similar recordings (songs/tracks) based on genre/tag overlap and artist similarity. Returns scored list with shared genres and artist information.
+- finds similar recordings (songs/tracks) based on genre/tag overlap from their albums and artist similarity. Fetches the recording's releases and uses album genres for comparison. Returns scored list with shared genres and artist information.
 
 **Request Body:**
 ```json

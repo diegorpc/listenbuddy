@@ -666,42 +666,58 @@ export default class RecommendationConcept {
     console.log("Positive feedback:", positiveFeedback);
     console.log("Negative feedback:", negativeFeedback);
 
-    return `You are a music recommendation assistant. Generate exactly ${amount} unique recommendations based on the provided information for user ${userId}.
-    Provide the output as a JSON array of objects, where each object has 'name' (string), 'mbid' (string, MusicBrainz ID), 'reasoning' (string, 2-3 sentences), and 'confidence' (number between 0 and 1).
+    return `You are a music recommendation assistant using the MusicBrainz database. Your task is to recommend music items similar to a source item based on musical characteristics.
 
-SOURCE ITEM: ${sourceItemMetadata?.name || "Unknown"} (MBID: ${sourceItem})
+TASK: Generate exactly ${amount} unique music recommendations for user ${userId}.
+
+OUTPUT FORMAT: JSON array of objects with these fields:
+- "name": string (artist/song/album name)
+- "mbid": string (MusicBrainz ID - MUST be from the provided list below)
+- "reasoning": string (2-3 sentences explaining why this is similar based on musical attributes)
+- "confidence": number (0.0 to 1.0, how confident you are in this recommendation)
+
+═══════════════════════════════════════════════════════════════════
+
+SOURCE ITEM BEING ANALYZED:
+Name: ${sourceItemMetadata?.name || sourceItemMetadata?.title || "Unknown"}
+MBID: ${sourceItem}
 Type: ${sourceItemMetadata?.type || "Unknown"}
-Description: ${
-      sourceItemMetadata?.disambiguation || sourceItemMetadata?.description ||
-      "N/A"
+${
+      sourceItemMetadata?.disambiguation
+        ? `Context: ${sourceItemMetadata.disambiguation}`
+        : ""
     }
 
-MUSICAL ATTRIBUTES:
-- Genres: ${sourceGenres}
-- Tags: ${sourceTags}
+MUSICAL CHARACTERISTICS:
+• Genres: ${sourceGenres}
+• User Tags: ${sourceTags}
 
-MUSICBRAINZ RELATIONSHIPS:
+AVAILABLE SIMILAR ITEMS FROM MUSICBRAINZ (use MBIDs from this list ONLY):
 ${
       mbRelationships.length > 0
         ? mbRelationships.join("\n")
-        : "- No specific relationships provided."
+        : "- No similar items available from MusicBrainz."
     }
 
-USER FEEDBACK HISTORY for user ${userId}:
-Positive: ${positiveFeedback || "None"}
-Negative: ${negativeFeedback || "None"}
+USER ${userId}'S PREFERENCE HISTORY:
+✓ Previously Liked: ${positiveFeedback || "None yet"}
+✗ Previously Disliked: ${negativeFeedback || "None yet"}
 
-Generate ${amount} recommendations with:
-1. Item name
-2. MusicBrainz ID (mbid)
-3. Natural language reasoning (2-3 sentences)
-4. Confidence score (0-1)
+═══════════════════════════════════════════════════════════════════
 
-Prioritize items that match positive feedback patterns and avoid negative patterns. Ensure recommended MBIDs are unique and different from the source item MBID and previously liked/disliked items from this user's feedback history.
+RECOMMENDATION GUIDELINES:
+1. ONLY use MBIDs from the "AVAILABLE SIMILAR ITEMS" section above
+2. Base recommendations on MUSICAL attributes: genres, styles, instrumentation, mood
+3. Consider the user's preference history - favor patterns from liked items, avoid patterns from disliked items
+4. DO NOT recommend based on non-musical attributes (e.g., song titles, release dates, artist names alone)
+5. Ensure all ${amount} recommendations are unique and different from the source item (${sourceItem})
+6. Provide clear reasoning that references specific musical characteristics
 
-CRITICAL:
-DO NOT generate recommendations based off non-musical attributes of the source item, like the title of a song.
-DO NOT create MBIDs that do not exist in the MusicBrainz database. If it is not an MBID that was given as input, consider it as invalid.`;
+CRITICAL CONSTRAINTS:
+⚠ NEVER invent or create MBIDs - only use those explicitly listed above
+⚠ NEVER recommend the source item itself
+⚠ NEVER recommend items the user has already provided feedback on
+⚠ Focus on musical similarity, not superficial attributes`;
   }
 
   /**

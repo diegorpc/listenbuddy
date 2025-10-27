@@ -92,11 +92,18 @@ export default class UserConcept {
    * @effects A new User document is created in the database with the provided username, a hashed password,
    *          and a generated ID. The new user's ID is returned.
    */
-  async createUser(
-    { username, password }: { username: string; password: string },
-  ): Promise<{ user?: User; error?: string }> {
+  async createUser({
+    username,
+    password,
+  }: {
+    username: string;
+    password: string;
+  }): Promise<{ user?: User; error?: string }> {
     if (
-      !username || username.trim() === "" || !password || password.trim() === ""
+      !username ||
+      username.trim() === "" ||
+      !password ||
+      password.trim() === ""
     ) {
       return { error: "Username and password cannot be empty." };
     }
@@ -132,12 +139,13 @@ export default class UserConcept {
    * @effects Validates the token with ListenBrainz API, fetches the username, and updates
    *          the user's document to include the `scrobbleToken` and `listenBrainzName`.
    */
-  async associateToken(
-    { user, scrobbleToken }: {
-      user: User;
-      scrobbleToken: string;
-    },
-  ): Promise<{ listenBrainzName?: string; error?: string }> {
+  async associateToken({
+    user,
+    scrobbleToken,
+  }: {
+    user: User;
+    scrobbleToken: string;
+  }): Promise<{ listenBrainzName?: string; error?: string }> {
     if (!user || !scrobbleToken || scrobbleToken.trim() === "") {
       return {
         error: "User ID and scrobbleToken cannot be empty.",
@@ -151,7 +159,7 @@ export default class UserConcept {
         {
           method: "GET",
           headers: {
-            "Authorization": `Token ${scrobbleToken.trim()}`,
+            Authorization: `Token ${scrobbleToken.trim()}`,
           },
         },
       );
@@ -185,7 +193,6 @@ export default class UserConcept {
 
       return { listenBrainzName: result.listenBrainzName };
     } catch (err) {
-      console.error("Error validating ListenBrainz token:", err);
       return { error: "Failed to validate token with ListenBrainz API." };
     }
   }
@@ -203,19 +210,24 @@ export default class UserConcept {
    *          within the `User` concept's collections occurs; it primarily serves to validate
    *          credentials and return the user's ID for external session management.
    */
-  async startSession(
-    { username, password }: { username: string; password: string },
-  ): Promise<
-    {
-      user?: User;
-      username?: string;
-      scrobbleToken?: string;
-      listenBrainzName?: string;
-      error?: string;
-    }
-  > {
+  async startSession({
+    username,
+    password,
+  }: {
+    username: string;
+    password: string;
+  }): Promise<{
+    user?: User;
+    username?: string;
+    scrobbleToken?: string;
+    listenBrainzName?: string;
+    error?: string;
+  }> {
     if (
-      !username || username.trim() === "" || !password || password.trim() === ""
+      !username ||
+      username.trim() === "" ||
+      !password ||
+      password.trim() === ""
     ) {
       return { error: "Username and password cannot be empty." };
     }
@@ -251,9 +263,11 @@ export default class UserConcept {
    *          is managed by other concepts (e.g., a `Session` concept) or the application layer.
    *          This acts as a trigger for those external systems via synchronization.
    */
-  async endSession(
-    { user }: { user: User },
-  ): Promise<Empty | { error: string }> {
+  async endSession({
+    user,
+  }: {
+    user: User;
+  }): Promise<Empty | { error: string }> {
     if (!user) {
       return { error: "User ID cannot be empty." };
     }
