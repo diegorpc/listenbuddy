@@ -65,7 +65,6 @@ interface RecommendationDoc {
  */
 interface LLMRecommendationOutput {
   name: string;
-  mbid: string; // MusicBrainz ID for the recommended item
   reasoning: string;
   confidence: number;
 }
@@ -158,6 +157,16 @@ export default class RecommendationConcept {
       userId: userId,
     });
     const userFeedbackHistory = feedbackHistoryResult.history || [];
+    // Build a set of names for which the user has already provided feedback (case-insensitive)
+    const feedbackNameDocs = await this.recommendations.find(
+      { userId: userId, feedback: { $ne: null } },
+      { projection: { itemName: 1 } },
+    ).toArray();
+    const existingFeedbackNames = new Set(
+      feedbackNameDocs
+        .map((d) => (d.itemName || "").toLowerCase())
+        .filter((n) => n.length > 0),
+    );
 
     // Fallback if LLM is not configured
     if (!this.geminiLLM) {
@@ -171,6 +180,7 @@ export default class RecommendationConcept {
           similarReleaseGroups,
         },
         userFeedbackHistory,
+        existingFeedbackNames,
       );
     }
 
@@ -257,16 +267,25 @@ export default class RecommendationConcept {
           break;
         }
 
-        // Ensure valid MBID, not recommending the source itself, and not an item already in user's feedback history
+        // Ensure valid name, not recommending the source itself, and not an item already in user's feedback history
+        // Generate a unique item ID for this recommendation (using name-based approach)
+        const itemId = `rec:${userId}:${
+          rec.name.toLowerCase().replace(/[^a-z0-9]/g, "-")
+        }:${Date.now()}` as Item;
+
+        const normalizedName = rec.name?.toLowerCase();
         if (
-          rec.mbid && rec.mbid !== sourceItemMBID &&
-          !existingFeedbackItems.has(rec.mbid as Item)
+          rec.name &&
+          rec.name !==
+            (sourceItemMetadata?.name || sourceItemMetadata?.title) &&
+          !existingFeedbackItems.has(itemId) &&
+          !(normalizedName && existingFeedbackNames.has(normalizedName))
         ) {
           newRecommendations.push({
             _id: freshID(),
             userId: userId, // Associate with the user
             item1: sourceItemMBID,
-            item2: rec.mbid as Item,
+            item2: itemId,
             itemName: rec.name,
             reasoning: rec.reasoning,
             confidence: Math.max(0, Math.min(1, rec.confidence)), // Clamp confidence
@@ -327,11 +346,11 @@ export default class RecommendationConcept {
       reasoning: string;
       sourceItem: Item;
     }[],
+    existingFeedbackNames: Set<string>,
   ): Promise<{ recommendations?: RecommendationDoc[]; error?: string }> {
     const { similarArtists, similarRecordings, similarReleaseGroups } =
       similarData;
     const allSimilarItems: {
-      mbid: string;
       name: string;
       type: string;
       score: number;
@@ -339,7 +358,6 @@ export default class RecommendationConcept {
 
     similarArtists.forEach((a) =>
       allSimilarItems.push({
-        mbid: a.mbid,
         name: a.name,
         type: "artist",
         score: a.score,
@@ -347,7 +365,6 @@ export default class RecommendationConcept {
     );
     similarRecordings.forEach((r) =>
       allSimilarItems.push({
-        mbid: r.mbid,
         name: r.title,
         type: "recording",
         score: r.score,
@@ -355,7 +372,6 @@ export default class RecommendationConcept {
     );
     similarReleaseGroups.forEach((rg) =>
       allSimilarItems.push({
-        mbid: rg.mbid,
         name: rg.title,
         type: "release-group",
         score: rg.score,
@@ -369,25 +385,31 @@ export default class RecommendationConcept {
 
     const newRecommendations: RecommendationDoc[] = [];
     const uniqueRecommendedItems = new Set<Item>(); // To track uniqueness within this batch
+    const seenNames = new Set<string>(); // Track names to avoid duplicates
 
     allSimilarItems
       .sort((a, b) => b.score - a.score)
-      .filter((item) =>
-        item.mbid !== sourceItemMBID &&
-        !existingFeedbackItems.has(item.mbid as Item)
-      ) // Don't recommend source or already feedbacked items
       .slice(0, amount * 2) // Take a bit more to ensure we can pick 'amount' unique items
       .forEach((item) => {
+        const itemId = `rec:${userId}:${
+          item.name.toLowerCase().replace(/[^a-z0-9]/g, "-")
+        }:${Date.now()}` as Item;
+        const normalizedName = item.name.toLowerCase();
+
         if (
           uniqueRecommendedItems.size < amount &&
-          !uniqueRecommendedItems.has(item.mbid as Item)
+          !uniqueRecommendedItems.has(itemId) &&
+          !seenNames.has(normalizedName) &&
+          !existingFeedbackItems.has(itemId) &&
+          !existingFeedbackNames.has(normalizedName)
         ) {
-          uniqueRecommendedItems.add(item.mbid as Item);
+          uniqueRecommendedItems.add(itemId);
+          seenNames.add(normalizedName);
           newRecommendations.push({
             _id: freshID(),
             userId: userId, // Associate with the user
             item1: sourceItemMBID,
-            item2: item.mbid as Item,
+            item2: itemId,
             itemName: item.name,
             reasoning:
               `Based on its similarity as a ${item.type} and shared genres. (LLM not available)`,
@@ -648,7 +670,7 @@ export default class RecommendationConcept {
   }): string {
     const {
       userId,
-      sourceItem,
+      sourceItem: _sourceItem,
       amount,
       sourceItemMetadata,
       sourceGenres,
@@ -666,21 +688,19 @@ export default class RecommendationConcept {
     console.log("Positive feedback:", positiveFeedback);
     console.log("Negative feedback:", negativeFeedback);
 
-    return `You are a music recommendation assistant using the MusicBrainz database. Your task is to recommend music items similar to a source item based on musical characteristics.
+    return `You are a music recommendation assistant. Your task is to recommend music items similar to a source item based on musical characteristics.
 
 TASK: Generate exactly ${amount} unique music recommendations for user ${userId}.
 
 OUTPUT FORMAT: JSON array of objects with these fields:
 - "name": string (artist/song/album name)
-- "mbid": string (MusicBrainz ID - MUST be from the provided list below)
 - "reasoning": string (2-3 sentences explaining why this is similar based on musical attributes)
-- "confidence": number (0.0 to 1.0, how confident you are in this recommendation)
+- "confidence": number (0.0 to 1.0, realistic similarity score based on genres and metadata)
 
 ═══════════════════════════════════════════════════════════════════
 
 SOURCE ITEM BEING ANALYZED:
 Name: ${sourceItemMetadata?.name || sourceItemMetadata?.title || "Unknown"}
-MBID: ${sourceItem}
 Type: ${sourceItemMetadata?.type || "Unknown"}
 ${
       sourceItemMetadata?.disambiguation
@@ -692,11 +712,11 @@ MUSICAL CHARACTERISTICS:
 • Genres: ${sourceGenres}
 • User Tags: ${sourceTags}
 
-AVAILABLE SIMILAR ITEMS FROM MUSICBRAINZ (use MBIDs from this list ONLY):
+CONTEXT FROM MUSICBRAINZ (for reference):
 ${
       mbRelationships.length > 0
         ? mbRelationships.join("\n")
-        : "- No similar items available from MusicBrainz."
+        : "- Limited information available from MusicBrainz."
     }
 
 USER ${userId}'S PREFERENCE HISTORY:
@@ -706,18 +726,19 @@ USER ${userId}'S PREFERENCE HISTORY:
 ═══════════════════════════════════════════════════════════════════
 
 RECOMMENDATION GUIDELINES:
-1. ONLY use MBIDs from the "AVAILABLE SIMILAR ITEMS" section above
-2. Base recommendations on MUSICAL attributes: genres, styles, instrumentation, mood
+1. Generate recommendations that share MUSICAL attributes with the source: genres, styles, instrumentation, mood, era
+2. The confidence score should reflect realistic similarity based on the genres and metadata above
 3. Consider the user's preference history - favor patterns from liked items, avoid patterns from disliked items
-4. DO NOT recommend based on non-musical attributes (e.g., song titles, release dates, artist names alone)
-5. Ensure all ${amount} recommendations are unique and different from the source item (${sourceItem})
+4. Recommendations can include items from the MusicBrainz context above OR similar well-known items in the same musical space
+5. Ensure all ${amount} recommendations are unique and different from the source item
 6. Provide clear reasoning that references specific musical characteristics
+7. For more obscure artists/items, feel free to recommend well-known artists with similar characteristics
 
 CRITICAL CONSTRAINTS:
-⚠ NEVER invent or create MBIDs - only use those explicitly listed above
 ⚠ NEVER recommend the source item itself
 ⚠ NEVER recommend items the user has already provided feedback on
-⚠ Focus on musical similarity, not superficial attributes`;
+⚠ Base confidence scores on actual genre/style similarity (don't give high scores unless truly similar)
+⚠ Focus on musical similarity, not superficial attributes like names or release dates`;
   }
 
   /**

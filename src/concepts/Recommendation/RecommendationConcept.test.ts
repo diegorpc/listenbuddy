@@ -1,5 +1,5 @@
-import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert";
-import { Collection, Db } from "npm:mongodb";
+import { assert, assertEquals } from "jsr:@std/assert";
+import { Collection } from "npm:mongodb";
 import { testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
@@ -14,23 +14,20 @@ import { GeminiLLM } from "@utils/geminiLLM.ts";
 let originalGeminiExecuteLLM: typeof GeminiLLM.prototype.executeLLM;
 
 const OUTPUT = true; // for verbose logging
-// A default mock response for the LLM
+// A default mock response for the LLM (no mbid required anymore)
 const mockLLMSuccessResponse = JSON.stringify([
   {
     name: "Mocked Recommended Artist 1",
-    mbid: "rec-item-mbid-1" as ID,
     reasoning: "Because of shared genre and user feedback patterns.",
     confidence: 0.95,
   },
   {
     name: "Mocked Recommended Artist 2",
-    mbid: "rec-item-mbid-2" as ID,
     reasoning: "Has collaborations with source and positive user history.",
     confidence: 0.88,
   },
   {
     name: "Mocked Recommended Artist 3",
-    mbid: "rec-item-mbid-3" as ID,
     reasoning: "Classic similar vibes.",
     confidence: 0.70,
   },
@@ -44,10 +41,10 @@ Deno.test.beforeEach(() => {
   Deno.env.set("GEMINI_API_KEY", "dummy-gemini-api-key");
 
   // Override the executeLLM method with our mock
-  GeminiLLM.prototype.executeLLM = async (prompt: string): Promise<string> => {
+  GeminiLLM.prototype.executeLLM = (_prompt: string): Promise<string> => {
     // Optionally, you could inspect the prompt here for more advanced mocking
     // console.log("LLM Mock received prompt:", prompt);
-    return mockLLMSuccessResponse;
+    return Promise.resolve(mockLLMSuccessResponse);
   };
 });
 
@@ -60,14 +57,20 @@ Deno.test.afterEach(() => {
 // --- Mock Data ---
 const userAId: ID = "user:Alice" as ID;
 const userBId: ID = "user:Bob" as ID;
+const userCId: ID = "user:Charlie" as ID;
 const sourceItemAId: ID = "mbid-artist-source-A" as ID;
 const sourceItemBId: ID = "mbid-recording-source-B" as ID;
+const sourceItemCId: ID = "mbid-source-C" as ID;
 const recommendedItem1Id: ID = "rec-item-mbid-1" as ID; // Matches mock LLM output
 const recommendedItem2Id: ID = "rec-item-mbid-2" as ID; // Matches mock LLM output
 const recommendedItem3Id: ID = "rec-item-mbid-3" as ID; // Matches mock LLM output
 const recommendedItem4Id: ID = "rec-item-mbid-4" as ID; // For fallback/manual testing
 const recommendedItem5Id: ID = "rec-item-mbid-5" as ID; // For fallback/manual testing
-const recommendedItem6Id: ID = "rec-item-mbid-6" as ID; // For fallback/manual testing
+// const recommendedItem6Id: ID = "rec-item-mbid-6" as ID; // Removed: no longer used
+
+// Track generated IDs for LLM-created recommendations so we can provide feedback using actual IDs
+let recA1GeneratedId: ID | null = null; // for "Mocked Recommended Artist 1"
+// Removed: no longer used
 
 const mockSourceItemMetadataA = {
   id: sourceItemAId,
@@ -86,49 +89,49 @@ const mockSimilarArtistsA = [
     mbid: recommendedItem1Id,
     name: "The Rolling Stones",
     score: 90,
-    genres: ["Rock", "Blues"],
+    sharedGenres: ["Rock", "Blues"],
   },
   {
     mbid: recommendedItem4Id,
     name: "Led Zeppelin",
     score: 85,
-    genres: ["Hard Rock", "Blues Rock"],
+    sharedGenres: ["Hard Rock", "Blues Rock"],
   },
   {
     mbid: recommendedItem5Id,
     name: "Queen",
     score: 80,
-    genres: ["Rock", "Glam Rock"],
+    sharedGenres: ["Rock", "Glam Rock"],
   },
 ];
 
 const mockSimilarRecordingsA = [
   {
     mbid: recommendedItem2Id,
-    name: "Bohemian Rhapsody",
+    title: "Bohemian Rhapsody",
     score: 88,
-    genres: ["Rock", "Opera"],
+    sharedGenres: ["Rock", "Opera"],
   },
   {
     mbid: "mbid-rec-song-x" as ID,
-    name: "Stairway to Heaven",
+    title: "Stairway to Heaven",
     score: 82,
-    genres: ["Hard Rock", "Folk Rock"],
+    sharedGenres: ["Hard Rock", "Folk Rock"],
   },
 ];
 
 const mockSimilarReleaseGroupsA = [
   {
     mbid: recommendedItem3Id,
-    name: "A Night at the Opera",
+    title: "A Night at the Opera",
     score: 92,
-    genres: ["Rock", "Opera"],
+    sharedGenres: ["Rock", "Opera"],
   },
   {
     mbid: "mbid-rec-album-y" as ID,
-    name: "Led Zeppelin IV",
+    title: "Led Zeppelin IV",
     score: 87,
-    genres: ["Hard Rock", "Folk Rock"],
+    sharedGenres: ["Hard Rock", "Folk Rock"],
   },
 ];
 
@@ -216,10 +219,27 @@ Deno.test("Recommendation Concept", async (t) => {
       const storedRecommendations = await recommendationConcept.recommendations
         .find({ userId: userAId, item1: sourceItemAId }).toArray();
       assertEquals(storedRecommendations.length, 2);
-      assertEquals(storedRecommendations[0].item2, recommendedItem1Id);
-      assertEquals(storedRecommendations[1].item2, recommendedItem2Id);
+      // item2 is now a generated ID based on name, not an MBID
+      assert(
+        storedRecommendations[0].item2.includes("mocked-recommended-artist"),
+      );
+      assertEquals(
+        storedRecommendations[0].itemName,
+        "Mocked Recommended Artist 1",
+      );
+      assertEquals(
+        storedRecommendations[1].itemName,
+        "Mocked Recommended Artist 2",
+      );
       assertEquals(storedRecommendations[0].feedback, null); // No feedback initially
       assert(storedRecommendations[0].createdAt instanceof Date);
+
+      // Store generated IDs for later feedback and queries
+      const rec1 = storedRecommendations.find((r) =>
+        r.itemName === "Mocked Recommended Artist 1"
+      );
+      // We only need the first item's generated ID for later feedback tests
+      recA1GeneratedId = rec1 ? (rec1.item2 as ID) : null;
     },
   );
 
@@ -259,9 +279,10 @@ Deno.test("Recommendation Concept", async (t) => {
       }).toArray();
       assertEquals(storedRecommendations.length, 3);
       // Verify items are from the `mockSimilar*A` data, sorted by score descending.
-      assertEquals(storedRecommendations[0].item2, recommendedItem3Id); // A Night at the Opera (release-group, score: 92)
-      assertEquals(storedRecommendations[1].item2, recommendedItem1Id); // The Rolling Stones (artist, score: 90)
-      assertEquals(storedRecommendations[2].item2, recommendedItem2Id); // Bohemian Rhapsody (recording, score: 88)
+      // item2 is now a generated ID based on name, not an MBID
+      assertEquals(storedRecommendations[0].itemName, "A Night at the Opera"); // release-group, score: 92
+      assertEquals(storedRecommendations[1].itemName, "The Rolling Stones"); // artist, score: 90
+      assertEquals(storedRecommendations[2].itemName, "Bohemian Rhapsody"); // recording, score: 88
       assert(storedRecommendations[0].reasoning.includes("LLM not available"));
     },
   );
@@ -269,41 +290,47 @@ Deno.test("Recommendation Concept", async (t) => {
   await t.step(
     "generate action: should not recommend the source item or items with existing feedback",
     async () => {
-      // First, provide negative feedback for recommendedItem1Id for userAId
-      await recommendationConcept.provideFeedback({
-        userId: userAId,
-        recommendedItem: recommendedItem1Id,
-        feedback: false,
-      });
+      // First, provide negative feedback for the previously recommended "Mocked Recommended Artist 1" using its generated ID
+      if (!recA1GeneratedId) {
+        const rec = await recommendationConcept.recommendations.findOne({
+          userId: userAId,
+          item1: sourceItemAId,
+          itemName: "Mocked Recommended Artist 1",
+        });
+        recA1GeneratedId = rec ? (rec.item2 as ID) : null;
+      }
+      if (recA1GeneratedId) {
+        await recommendationConcept.provideFeedback({
+          userId: userAId,
+          recommendedItem: recA1GeneratedId,
+          feedback: false,
+        });
+      }
 
-      // Mock LLM to include sourceItemAId and recommendedItem1Id in its hypothetical output
-      GeminiLLM.prototype.executeLLM = async () =>
-        JSON.stringify([
+      // Mock LLM to include source item name in output (should be filtered out)
+      GeminiLLM.prototype.executeLLM = () =>
+        Promise.resolve(JSON.stringify([
           {
-            name: "The Beatles (Source)",
-            mbid: sourceItemAId,
+            name: "The Beatles",
             reasoning: "It's the source!",
             confidence: 1.0,
           },
           {
             name: "Mocked Recommended Artist 1",
-            mbid: recommendedItem1Id,
-            reasoning: "User disliked this one before.",
+            reasoning: "Previously recommended.",
             confidence: 0.95,
           },
           {
             name: "New Recommended Artist X",
-            mbid: "new-rec-x" as ID,
             reasoning: "Good one.",
             confidence: 0.90,
           },
           {
             name: "New Recommended Artist Y",
-            mbid: "new-rec-y" as ID,
             reasoning: "Another good one.",
             confidence: 0.85,
           },
-        ]);
+        ]));
 
       const result = await recommendationConcept.generate({
         userId: userAId,
@@ -318,13 +345,25 @@ Deno.test("Recommendation Concept", async (t) => {
       assert(!result.error);
       assert(result.recommendations);
       assertEquals(result.recommendations.length, 2);
-      assertNotEquals(result.recommendations[0].item2, sourceItemAId);
-      assertNotEquals(result.recommendations[0].item2, recommendedItem1Id);
-      assertEquals(result.recommendations[0].item2, "new-rec-x" as ID);
-      assertEquals(result.recommendations[1].item2, "new-rec-y" as ID);
+      // Should not recommend source item or items with existing feedback
+      assertEquals(
+        result.recommendations[0].itemName,
+        "New Recommended Artist X",
+      );
+      assertEquals(
+        result.recommendations[1].itemName,
+        "New Recommended Artist Y",
+      );
+      assert(
+        result.recommendations[0].item2.includes("new-recommended-artist-x"),
+      );
+      assert(
+        result.recommendations[1].item2.includes("new-recommended-artist-y"),
+      );
 
       // Restore original mock
-      GeminiLLM.prototype.executeLLM = async () => mockLLMSuccessResponse;
+      GeminiLLM.prototype.executeLLM = () =>
+        Promise.resolve(mockLLMSuccessResponse);
     },
   );
 
@@ -363,57 +402,62 @@ Deno.test("Recommendation Concept", async (t) => {
   await t.step(
     "getRecommendations action: effects - retrieve and prioritize recommendations",
     async () => {
-      // Clean up any test data from previous tests that might interfere
+      // Use an isolated user and source item to avoid interference from previous steps
       await recommendationConcept.recommendations.deleteMany({
-        userId: userAId,
-        item1: sourceItemAId,
-        item2: { $in: ["new-rec-x" as ID, "new-rec-y" as ID] },
+        userId: userCId,
       });
 
-      // Add more recommendations for userAId and sourceItemAId
+      // Insert controlled recommendations with known feedback and confidence
       await recommendationConcept.recommendations.insertMany([
         {
           _id: freshID(),
-          userId: userAId,
-          item1: sourceItemAId,
-          item2: recommendedItem4Id,
+          userId: userCId,
+          item1: sourceItemCId,
+          item2: ("rec-c-pos-high" as ID),
+          itemName: "C Item High Positive",
+          reasoning: "rec2",
+          confidence: 0.92,
+          feedback: true,
+          createdAt: new Date(Date.now() - 3000),
+        },
+        {
+          _id: freshID(),
+          userId: userCId,
+          item1: sourceItemCId,
+          item2: ("rec-c-pos-low" as ID),
+          itemName: "C Item Low Positive",
           reasoning: "rec4",
           confidence: 0.7,
           feedback: true,
-          createdAt: new Date(Date.now() - 1000),
-        }, // Positive
+          createdAt: new Date(Date.now() - 2000),
+        },
         {
           _id: freshID(),
-          userId: userAId,
-          item1: sourceItemAId,
-          item2: recommendedItem5Id,
+          userId: userCId,
+          item1: sourceItemCId,
+          item2: ("rec-c-neutral" as ID),
+          itemName: "C Item Neutral",
           reasoning: "rec5",
           confidence: 0.6,
           feedback: null,
-          createdAt: new Date(Date.now() - 2000),
-        }, // No feedback
+          createdAt: new Date(Date.now() - 1000),
+        },
         {
           _id: freshID(),
-          userId: userAId,
-          item1: sourceItemAId,
-          item2: recommendedItem6Id,
+          userId: userCId,
+          item1: sourceItemCId,
+          item2: ("rec-c-negative" as ID),
+          itemName: "C Item Negative",
           reasoning: "rec6",
-          confidence: 0.9,
+          confidence: 0.95,
           feedback: false,
-          createdAt: new Date(Date.now() - 3000),
-        }, // Negative
+          createdAt: new Date(Date.now() - 500),
+        },
       ]);
 
-      // Update existing recommendation for recommendedItem2Id (initially from LLM) to positive
-      await recommendationConcept.provideFeedback({
-        userId: userAId,
-        recommendedItem: recommendedItem2Id,
-        feedback: true,
-      });
-
       const result = await recommendationConcept.getRecommendations({
-        userId: userAId,
-        item: sourceItemAId,
+        userId: userCId,
+        item: sourceItemCId,
         amount: 3,
       });
       if (OUTPUT) console.log(result);
@@ -423,9 +467,9 @@ Deno.test("Recommendation Concept", async (t) => {
 
       // Expect order: Positively feedbacked (rec2, rec4), then no feedback (rec5). rec6 (negative) should be excluded.
       const iw = result.itemsWithReasoning!;
-      assertEquals(iw[0].item, recommendedItem2Id); // Higher confidence positive
-      assertEquals(iw[1].item, recommendedItem4Id); // Lower confidence positive
-      assertEquals(iw[2].item, recommendedItem5Id); // No feedback
+      assertEquals(iw[0].reasoning, "rec2"); // Higher confidence positive
+      assertEquals(iw[1].reasoning, "rec4"); // Lower confidence positive
+      assertEquals(iw[2].reasoning, "rec5"); // No feedback
 
       // Verify structure: each entry has item, itemName, reasoning, and confidence
       for (const entry of iw) {
@@ -436,9 +480,9 @@ Deno.test("Recommendation Concept", async (t) => {
         assert(entry.confidence >= 0 && entry.confidence <= 1);
       }
 
-      // Verify rec6 (negative feedback) is not included
-      const items = iw.map((e) => e.item);
-      assert(!items.includes(recommendedItem6Id)); // Negatively feedbacked item is excluded
+      // Verify rec6 (negative feedback) is not included by checking reasoning
+      const reasonings = iw.map((e) => e.reasoning);
+      assert(!reasonings.includes("rec6")); // Negatively feedbacked item is excluded
     },
   );
 
@@ -471,10 +515,20 @@ Deno.test("Recommendation Concept", async (t) => {
       // Ensure recommendedItem1Id exists from a previous test and has negative feedback
       // First, let's make sure an instance of recommendedItem1Id exists for userAId
       // (It was generated and then given negative feedback in a prior test)
-      let preUpdate = await recommendationConcept.recommendations.findOne({
-        userId: userAId,
-        item2: recommendedItem1Id,
-      });
+      if (!recA1GeneratedId) {
+        const rec = await recommendationConcept.recommendations.findOne({
+          userId: userAId,
+          item1: sourceItemAId,
+          itemName: "Mocked Recommended Artist 1",
+        });
+        recA1GeneratedId = rec ? (rec.item2 as ID) : null;
+      }
+      const preUpdate = recA1GeneratedId
+        ? await recommendationConcept.recommendations.findOne({
+          userId: userAId,
+          item2: recA1GeneratedId,
+        })
+        : null;
       assert(
         preUpdate,
         "Recommendation for item1Id should exist before update.",
@@ -486,7 +540,7 @@ Deno.test("Recommendation Concept", async (t) => {
 
       const result = await recommendationConcept.provideFeedback({
         userId: userAId,
-        recommendedItem: recommendedItem1Id,
+        recommendedItem: recA1GeneratedId as ID,
         feedback: true, // Change to positive
       });
 
@@ -497,7 +551,7 @@ Deno.test("Recommendation Concept", async (t) => {
 
       const updatedRec = await recommendationConcept.recommendations.findOne({
         userId: userAId,
-        item2: recommendedItem1Id,
+        item2: recA1GeneratedId as ID,
       });
       assert(updatedRec);
       assertEquals(updatedRec.feedback, true);
@@ -572,7 +626,7 @@ Deno.test("Recommendation Concept", async (t) => {
       await recommendationConcept.recommendations.deleteMany({});
 
       // Re-generate some recommendations and provide feedback for userAId
-      await recommendationConcept.generate({
+      const regen = await recommendationConcept.generate({
         userId: userAId,
         sourceItem: sourceItemAId,
         amount: 2, // Generate 2 recommendations so we can provide feedback on both
@@ -581,14 +635,23 @@ Deno.test("Recommendation Concept", async (t) => {
         similarRecordings: mockSimilarRecordingsA,
         similarReleaseGroups: mockSimilarReleaseGroupsA,
       });
+      assert(regen.recommendations && regen.recommendations.length >= 2);
+      const r1 = regen.recommendations.find((r) =>
+        r.itemName === "Mocked Recommended Artist 1"
+      );
+      const r2 = regen.recommendations.find((r) =>
+        r.itemName === "Mocked Recommended Artist 2"
+      );
+      const r1Id = (r1?.item2 || regen.recommendations[0].item2) as ID;
+      const r2Id = (r2?.item2 || regen.recommendations[1].item2) as ID;
       await recommendationConcept.provideFeedback({
         userId: userAId,
-        recommendedItem: recommendedItem1Id,
+        recommendedItem: r1Id,
         feedback: true,
       });
       await recommendationConcept.provideFeedback({
         userId: userAId,
-        recommendedItem: recommendedItem2Id,
+        recommendedItem: r2Id,
         feedback: false,
       });
 
@@ -600,15 +663,11 @@ Deno.test("Recommendation Concept", async (t) => {
       assert(result.history);
       assertEquals(result.history.length, 2); // Only items with feedback
 
-      const positiveFeedback = result.history.find((h) =>
-        h.item === recommendedItem1Id
-      );
+      const positiveFeedback = result.history.find((h) => h.feedback === true);
       assert(positiveFeedback);
       assertEquals(positiveFeedback.feedback, true);
 
-      const negativeFeedback = result.history.find((h) =>
-        h.item === recommendedItem2Id
-      );
+      const negativeFeedback = result.history.find((h) => h.feedback === false);
       assert(negativeFeedback);
       assertEquals(negativeFeedback.feedback, false);
 
