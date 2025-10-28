@@ -230,16 +230,8 @@ export default class ListenBrainzAPIConcept {
     this.listenHistoryCache.createIndex({ user: 1 }, { unique: true }); // One history cache entry per user
   }
 
-  // --- Internal Helper for authenticated ListenBrainz API calls ---
-  private async _callListenBrainzAPI<T>(
-    scrobbleToken: string,
-    endpoint: string,
-    params: Record<string, unknown> = {},
-    method: "GET" | "POST" = "GET",
-    body: Record<string, unknown> | null = null,
-    retryCount: number = 0,
-  ): Promise<T | { error: string }> {
-    const MAX_RETRIES = 2;
+  // --- Internal Helper for rate limit enforcement ---
+  private async _enforceRateLimit(): Promise<void> {
     const now = Date.now();
 
     // Enforce minimum delay between requests
@@ -272,6 +264,35 @@ export default class ListenBrainzAPIConcept {
     }
 
     this.lastRequestTime = Date.now();
+  }
+
+  // --- Internal Helper for updating rate limit state from response headers ---
+  private _updateRateLimitState(response: Response): void {
+    const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining");
+    const rateLimitResetIn = response.headers.get("X-RateLimit-Reset-In");
+
+    if (rateLimitRemaining !== null) {
+      this.rateLimitRemaining = parseInt(rateLimitRemaining, 10);
+    }
+    if (rateLimitResetIn !== null) {
+      const resetInSeconds = parseInt(rateLimitResetIn, 10);
+      this.rateLimitResetTime = (Date.now() / 1000) + resetInSeconds;
+    }
+  }
+
+  // --- Internal Helper for authenticated ListenBrainz API calls ---
+  private async _callListenBrainzAPI<T>(
+    scrobbleToken: string,
+    endpoint: string,
+    params: Record<string, unknown> = {},
+    method: "GET" | "POST" = "GET",
+    body: Record<string, unknown> | null = null,
+    retryCount: number = 0,
+  ): Promise<T | { error: string }> {
+    const MAX_RETRIES = 2;
+
+    // Enforce rate limiting
+    await this._enforceRateLimit();
 
     const url = new URL(LISTENBRAINZ_API_BASE + endpoint);
     if (method === "GET") {
@@ -288,6 +309,8 @@ export default class ListenBrainzAPIConcept {
         headers: {
           "Authorization": `Token ${scrobbleToken}`,
           "User-Agent": "ListenBuddy/1.0.0 ( contact@example.com )", // Required by ListenBrainz
+          // Ensure sockets are not kept alive across requests to avoid TLS leaks in tests
+          "Connection": "close",
         },
       };
       if (method === "POST" && body) {
@@ -301,26 +324,15 @@ export default class ListenBrainzAPIConcept {
       const response = await fetch(url.toString(), fetchOptions);
 
       // Update rate limit info from response headers
-      const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining");
+      this._updateRateLimitState(response);
       const rateLimitResetIn = response.headers.get("X-RateLimit-Reset-In");
-
-      if (rateLimitRemaining !== null) {
-        this.rateLimitRemaining = parseInt(rateLimitRemaining, 10);
-      }
-      if (rateLimitResetIn !== null) {
-        const resetInSeconds = parseInt(rateLimitResetIn, 10);
-        this.rateLimitResetTime = (Date.now() / 1000) + resetInSeconds;
-      }
 
       // Handle 429 rate limit error specifically
       if (response.status === 429) {
-        await response.body?.cancel();
-
         if (retryCount >= MAX_RETRIES) {
-          const errorText = await response.text().catch(() => "{}");
+          await response.body?.cancel();
           return {
-            error:
-              `ListenBrainz API error validating token: 429 - ${errorText}`,
+            error: `Rate limit exceeded. Please try again later.`,
           };
         }
 
@@ -332,6 +344,7 @@ export default class ListenBrainzAPIConcept {
             MAX_RETRIES + 1
           }). Waiting ${resetInSeconds} seconds before retry...`,
         );
+        await response.body?.cancel();
         await new Promise((resolve) =>
           setTimeout(resolve, resetInSeconds * 1000)
         );
@@ -393,6 +406,7 @@ export default class ListenBrainzAPIConcept {
     count: number,
     endpoint: string, // e.g., `users/${username}/artists`
     apiResponseKey: string, // The key in the API response that holds the list of items (e.g., 'artists')
+    offset: number = 0, // Optional offset for pagination, defaults to 0
   ): Promise<T[] | { error: string }> {
     // 1. Validate inputs
     if (!VALID_TIME_RANGES.includes(timeRange)) {
@@ -402,19 +416,21 @@ export default class ListenBrainzAPIConcept {
       return { error: `Count must be non-negative: ${count}` };
     }
 
-    // 2. Check cache
-    const cachedStats = await this.statsCache.findOne({
-      user,
-      statType,
-      timeRange,
-    });
-    if (
-      cachedStats &&
-      (new Date().getTime() - cachedStats.lastUpdated.getTime()) <
-        this.CACHE_TTL_MS
-    ) {
-      // Return cached data, potentially slicing to 'count' if cached data is richer
-      return (cachedStats.data.items as T[] || []).slice(0, count);
+    // 2. Check cache (only use cache when offset is 0, as cache doesn't account for pagination)
+    if (offset === 0) {
+      const cachedStats = await this.statsCache.findOne({
+        user,
+        statType,
+        timeRange,
+      });
+      if (
+        cachedStats &&
+        (new Date().getTime() - cachedStats.lastUpdated.getTime()) <
+          this.CACHE_TTL_MS
+      ) {
+        // Return cached data, potentially slicing to 'count' if cached data is richer
+        return (cachedStats.data.items as T[] || []).slice(0, count);
+      }
     }
 
     // 3. Fetch from API
@@ -423,7 +439,7 @@ export default class ListenBrainzAPIConcept {
     >(
       scrobbleToken,
       endpoint,
-      { range: timeRange, count: count },
+      { range: timeRange, count: count, offset: offset },
     );
 
     if ("error" in result) {
@@ -432,33 +448,36 @@ export default class ListenBrainzAPIConcept {
 
     const items = result.payload?.[apiResponseKey] as T[] || [];
 
-    // 4. Update cache
-    await this.statsCache.updateOne(
-      { user, statType, timeRange },
-      {
-        $set: {
-          data: { items }, // Store the fetched items
-          lastUpdated: new Date(),
+    // 4. Update cache (only cache when offset is 0, as cache doesn't account for pagination)
+    if (offset === 0) {
+      await this.statsCache.updateOne(
+        { user, statType, timeRange },
+        {
+          $set: {
+            data: { items }, // Store the fetched items
+            lastUpdated: new Date(),
+          },
+          $setOnInsert: { _id: freshID(), user, statType, timeRange }, // Add _id on first insert
         },
-        $setOnInsert: { _id: freshID(), user, statType, timeRange }, // Add _id on first insert
-      },
-      { upsert: true },
-    );
+        { upsert: true },
+      );
+    }
 
     return items;
   }
 
   /**
    * @action getTopArtists
-   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative
+   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative, offset is non-negative
    * @effect fetches and returns top artists for the user from ListenBrainz API for the specified time range, with pagination support. Each artist includes name, MBIDs, and listen count.
    */
   async getTopArtists(
-    { user, scrobbleToken, timeRange, count }: {
+    { user, scrobbleToken, timeRange, count, offset = 0 }: {
       user: User;
       scrobbleToken: string;
       timeRange: string;
       count: number;
+      offset?: number;
     },
   ): Promise<{ artists?: Artist[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
@@ -475,6 +494,7 @@ export default class ListenBrainzAPIConcept {
       count,
       `stats/user/${username}/artists`,
       "artists",
+      offset,
     );
 
     if ("error" in items) {
@@ -485,15 +505,16 @@ export default class ListenBrainzAPIConcept {
 
   /**
    * @action getTopReleases
-   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative
+   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative, offset is non-negative
    * @effect fetches and returns top releases (albums) for the user from ListenBrainz API for the specified time range, with pagination support. Each release includes name, artist, MBID, and listen count.
    */
   async getTopReleases(
-    { user, scrobbleToken, timeRange, count }: {
+    { user, scrobbleToken, timeRange, count, offset = 0 }: {
       user: User;
       scrobbleToken: string;
       timeRange: string;
       count: number;
+      offset?: number;
     },
   ): Promise<{ releases?: Release[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
@@ -510,6 +531,7 @@ export default class ListenBrainzAPIConcept {
       count,
       `stats/user/${username}/releases`,
       "releases",
+      offset,
     );
     if ("error" in items) {
       return { error: items.error };
@@ -519,15 +541,16 @@ export default class ListenBrainzAPIConcept {
 
   /**
    * @action getTopReleaseGroups
-   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative
+   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative, offset is non-negative
    * @effect fetches and returns top release groups (album versions) for the user from ListenBrainz API for the specified time range. Each release group includes name, artist, MBID, cover art, and listen count.
    */
   async getTopReleaseGroups(
-    { user, scrobbleToken, timeRange, count }: {
+    { user, scrobbleToken, timeRange, count, offset = 0 }: {
       user: User;
       scrobbleToken: string;
       timeRange: string;
       count: number;
+      offset?: number;
     },
   ): Promise<{ releaseGroups?: ReleaseGroup[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
@@ -544,6 +567,7 @@ export default class ListenBrainzAPIConcept {
       count,
       `stats/user/${username}/release-groups`,
       "release_groups", // Note: API response uses 'release_groups' key
+      offset,
     );
     if ("error" in items) {
       return { error: items.error };
@@ -553,15 +577,16 @@ export default class ListenBrainzAPIConcept {
 
   /**
    * @action getTopRecordings
-   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative
+   * @requires user has valid scrobbleToken, timeRange is valid, count is non-negative, offset is non-negative
    * @effect fetches and returns top recordings (tracks/songs) for the user from ListenBrainz API for the specified time range. Each recording includes track name, artist, release, MBID, and listen count.
    */
   async getTopRecordings(
-    { user, scrobbleToken, timeRange, count }: {
+    { user, scrobbleToken, timeRange, count, offset = 0 }: {
       user: User;
       scrobbleToken: string;
       timeRange: string;
       count: number;
+      offset?: number;
     },
   ): Promise<{ recordings?: Recording[]; error?: string }> {
     const usernameResult = await this._getUsernameFromToken(scrobbleToken);
@@ -578,6 +603,7 @@ export default class ListenBrainzAPIConcept {
       count,
       `stats/user/${username}/recordings`,
       "recordings",
+      offset,
     );
     if ("error" in items) {
       return { error: items.error };
@@ -870,13 +896,30 @@ export default class ListenBrainzAPIConcept {
     }
 
     try {
+      // Enforce rate limiting before making the request
+      await this._enforceRateLimit();
+
       // The /validate-token endpoint validates the token and returns user info
       const response = await fetch(LISTENBRAINZ_API_BASE + "validate-token", {
         headers: {
           "Authorization": `Token ${token}`,
           "User-Agent": "ListenBuddy/1.0.0 ( contact@example.com )",
+          // Ensure sockets are not kept alive across requests to avoid TLS leaks in tests
+          "Connection": "close",
         },
       });
+
+      // Update rate limit state from response headers
+      this._updateRateLimitState(response);
+
+      // Handle 429 rate limit error
+      if (response.status === 429) {
+        await response.body?.cancel();
+        return {
+          valid: false,
+          error: "Rate limit exceeded. Please try again later.",
+        };
+      }
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {

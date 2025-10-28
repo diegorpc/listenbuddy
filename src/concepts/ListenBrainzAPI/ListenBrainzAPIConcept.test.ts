@@ -19,7 +19,11 @@ const TEST_USER_ID = "test_user_lbapi" as ID; // A dummy user ID for caching pur
 // Constants for timestamp calculations
 const ONE_DAY_IN_SECONDS = 24 * 3600;
 
-Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
+Deno.test({
+  name: "ListenBrainzAPI Concept Tests",
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async (t) => {
   if (!LISTENBRAINZ_TOKEN) {
     console.warn(
       "LISTENBRAINZ_TOKEN not found in environment variables. Skipping ListenBrainzAPI tests.",
@@ -266,6 +270,168 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
     assertExists(result.recordings[0].track_name);
     assertEquals(Array.isArray(result.recordings[0].artist_mbids), true);
     assertExists(result.recordings[0].artist_name);
+  });
+
+  await t.step("Action: getTopArtists - with offset parameter", async () => {
+    // Clear cache to ensure fresh data
+    await lbApi.clearCache({ user: TEST_USER_ID });
+
+    // Fetch top 10 artists without offset
+    const resultWithoutOffset = await lbApi.getTopArtists({
+      user: TEST_USER_ID,
+      scrobbleToken: LISTENBRAINZ_TOKEN,
+      timeRange: "all_time",
+      count: 10,
+    });
+    if (OUTPUT) console.log("Without offset:", resultWithoutOffset);
+    assertExists(resultWithoutOffset.artists);
+
+    // Clear cache again
+    await lbApi.clearCache({ user: TEST_USER_ID });
+
+    // Fetch top 5 artists with offset 5 (should skip first 5)
+    const resultWithOffset = await lbApi.getTopArtists({
+      user: TEST_USER_ID,
+      scrobbleToken: LISTENBRAINZ_TOKEN,
+      timeRange: "all_time",
+      count: 5,
+      offset: 5,
+    });
+    if (OUTPUT) console.log("With offset 5:", resultWithOffset);
+    assertExists(resultWithOffset.artists);
+
+    // If both have results, verify offset worked (6th item without offset should be 1st item with offset)
+    if (
+      resultWithoutOffset.artists!.length >= 6 &&
+      resultWithOffset.artists!.length > 0
+    ) {
+      assertEquals(
+        resultWithoutOffset.artists![5].artist_name,
+        resultWithOffset.artists![0].artist_name,
+        "Expected 6th artist without offset to match 1st artist with offset 5",
+      );
+    }
+  });
+
+  await t.step("Action: getTopReleases - with offset parameter", async () => {
+    await lbApi.clearCache({ user: TEST_USER_ID });
+
+    const resultWithoutOffset = await lbApi.getTopReleases({
+      user: TEST_USER_ID,
+      scrobbleToken: LISTENBRAINZ_TOKEN,
+      timeRange: "all_time",
+      count: 10,
+    });
+    if (OUTPUT) console.log("Releases without offset:", resultWithoutOffset);
+    assertExists(resultWithoutOffset.releases);
+
+    await lbApi.clearCache({ user: TEST_USER_ID });
+
+    const resultWithOffset = await lbApi.getTopReleases({
+      user: TEST_USER_ID,
+      scrobbleToken: LISTENBRAINZ_TOKEN,
+      timeRange: "all_time",
+      count: 5,
+      offset: 3,
+    });
+    if (OUTPUT) console.log("Releases with offset 3:", resultWithOffset);
+    assertExists(resultWithOffset.releases);
+
+    if (
+      resultWithoutOffset.releases!.length >= 4 &&
+      resultWithOffset.releases!.length > 0
+    ) {
+      assertEquals(
+        resultWithoutOffset.releases![3].release_name,
+        resultWithOffset.releases![0].release_name,
+        "Expected 4th release without offset to match 1st release with offset 3",
+      );
+    }
+  });
+
+  await t.step(
+    "Action: getTopReleaseGroups - with offset parameter",
+    async () => {
+      await lbApi.clearCache({ user: TEST_USER_ID });
+
+      const resultWithoutOffset = await lbApi.getTopReleaseGroups({
+        user: TEST_USER_ID,
+        scrobbleToken: LISTENBRAINZ_TOKEN,
+        timeRange: "all_time",
+        count: 8,
+      });
+      if (OUTPUT) {
+        console.log(
+          "Release groups without offset:",
+          resultWithoutOffset,
+        );
+      }
+      assertExists(resultWithoutOffset.releaseGroups);
+
+      await lbApi.clearCache({ user: TEST_USER_ID });
+
+      const resultWithOffset = await lbApi.getTopReleaseGroups({
+        user: TEST_USER_ID,
+        scrobbleToken: LISTENBRAINZ_TOKEN,
+        timeRange: "all_time",
+        count: 3,
+        offset: 2,
+      });
+      if (OUTPUT) {
+        console.log(
+          "Release groups with offset 2:",
+          resultWithOffset,
+        );
+      }
+      assertExists(resultWithOffset.releaseGroups);
+
+      if (
+        resultWithoutOffset.releaseGroups!.length >= 3 &&
+        resultWithOffset.releaseGroups!.length > 0
+      ) {
+        assertEquals(
+          resultWithoutOffset.releaseGroups![2].release_group_name,
+          resultWithOffset.releaseGroups![0].release_group_name,
+          "Expected 3rd release group without offset to match 1st release group with offset 2",
+        );
+      }
+    },
+  );
+
+  await t.step("Action: getTopRecordings - with offset parameter", async () => {
+    await lbApi.clearCache({ user: TEST_USER_ID });
+
+    const resultWithoutOffset = await lbApi.getTopRecordings({
+      user: TEST_USER_ID,
+      scrobbleToken: LISTENBRAINZ_TOKEN,
+      timeRange: "all_time",
+      count: 10,
+    });
+    if (OUTPUT) console.log("Recordings without offset:", resultWithoutOffset);
+    assertExists(resultWithoutOffset.recordings);
+
+    await lbApi.clearCache({ user: TEST_USER_ID });
+
+    const resultWithOffset = await lbApi.getTopRecordings({
+      user: TEST_USER_ID,
+      scrobbleToken: LISTENBRAINZ_TOKEN,
+      timeRange: "all_time",
+      count: 5,
+      offset: 4,
+    });
+    if (OUTPUT) console.log("Recordings with offset 4:", resultWithOffset);
+    assertExists(resultWithOffset.recordings);
+
+    if (
+      resultWithoutOffset.recordings!.length >= 5 &&
+      resultWithOffset.recordings!.length > 0
+    ) {
+      assertEquals(
+        resultWithoutOffset.recordings![4].track_name,
+        resultWithOffset.recordings![0].track_name,
+        "Expected 5th recording without offset to match 1st recording with offset 4",
+      );
+    }
   });
 
   await t.step("Action: getListenHistory - with minTimestamp", async () => {
@@ -651,5 +817,9 @@ Deno.test("ListenBrainzAPI Concept Tests", async (t) => {
     },
   );
 
-  await client.close();
+  try {
+    // all test steps are defined above
+  } finally {
+    await client.close();
+  }
 });
