@@ -46,3 +46,25 @@ Many of the concepts underwent heavy changes or were reimagined, taking into acc
   
 A lot of the refactoring and "interesting moments" for this were more so confirming the external api payloads with Postman or fixing incorrect integrations, but overall most of the context integrations were pretty good and (mostly) worked out of the box, definitely warranting some correction but not too much.
 
+# 6.104 Assignment 4b: Frontend UI Coding
+
+## Changes
+
+One of the major changes during the frontend development was to the Recommendation concept's function signatures and structure. I initially wanted to keep all the recommendations 'native' to MusicBrainz primarily in order to be able to load cover images for recommendations and also guided by the expectation that the relationships for entities and the tagging would be a bit more elaborate. Unfortunately this was not the case (possibly due to the obscurity of the music I was testing for from my library) and I've decided to still pass MusicBrainzAPI info to Recommendation but just have this be extra context for the LLM to give recommendations, which were easily better than anything I could derive just from the MusicBrainz tags and limited querying features.
+
+I modified the MusicBrainzAPI to fall back to retrieving tags from albums and then fall back to artists in the case that it didn't find tags, which was fairly frequent during testing with my own data. I also strengthened the rate limiting implementation according to the API documentation for the MusicBrainz API and the ListenBrainz API.
+
+I also modified the UserConcept to store the ListenBrainz name of the user in the database as we use it in the UI.
+
+## Setup
+
+.env requires:
+
+GEMINI_API_KEY
+GEMINI_MODEL
+GEMINI_CONFIG
+MONGODB_URL
+DB_NAME
+DB_USER
+DB_PASSWORD
+LISTENBRAINZ_TOKEN

@@ -100,22 +100,29 @@
 
 ### POST /api/Recommendation/getRecommendations
 
-**Description:** Retrieves a list of recommended items for a specified user and a given item, prioritizing positively feedbacked recommendations and strictly avoiding negatively feedbacked ones.
+**Description:** Retrieves a list of recommended items for a specified user and a given item, prioritizing positively feedbacked recommendations and strictly avoiding negatively feedbacked ones. Optionally filter to only return recommendations without any feedback, and exclude specific items from the results.
 
 **Requirements:**
 - `userId` is valid.
 - `item` exists.
 - `amount` is positive.
+- `feedbacked` is optional (default: `true`).
+- `ignore` is optional (default: empty array).
 
 **Effects:**
-- Returns `amount` of recommended item IDs for the specified `userId` similar to the given `item`, prioritizing positively-feedbacked items and strictly excluding negatively-feedbacked ones.
+- Returns `amount` of recommended item IDs for the specified `userId` similar to the given `item`.
+- If `feedbacked` is `true` (default): prioritizes positively-feedbacked items and strictly excludes negatively-feedbacked ones.
+- If `feedbacked` is `false`: only returns recommendations that have NOT received any feedback yet (feedback is `null`).
+- Items in the `ignore` list are excluded from the results regardless of feedback status.
 
 **Request Body:**
 ```json
 {
   "userId": "string",
   "item": "string",
-  "amount": "number"
+  "amount": "number",
+  "feedbacked": "boolean (optional, default: true)",
+  "ignore": "array of strings (optional, default: [])"
 }
 ```
 
@@ -177,6 +184,37 @@
 
 ---
 
+### POST /api/Recommendation/deleteRecommendation
+
+**Description:** Removes a specific recommendation by its ID from the concept's state.
+
+**Requirements:**
+- `recommendationId` is valid and exists.
+
+**Effects:**
+- Removes the specific recommendation with the given ID from the concept's state.
+
+**Request Body:**
+```json
+{
+  "recommendationId": "string"
+}
+```
+
+**Success Response Body (Action):**
+```json
+{}
+```
+
+**Error Response Body:**
+```json
+{
+  "error": "string"
+}
+```
+
+---
+
 ### POST /api/Recommendation/clearRecommendations
 
 **Description:** Removes all stored recommendations and feedback for the specified `userId`. If no `userId` is provided, all recommendations in the concept are cleared.
@@ -210,33 +248,39 @@
 
 ---
 
-### POST /api/Recommendation/_getFeedbackHistory
+### POST /api/Recommendation/getFeedbackHistory
 
-**Description:** Returns a list of all feedback entries made by the specified `userId`, including the recommended item, the feedback, the reasoning, and the source item that led to the recommendation. This query is primarily for internal use by the `generate` action.
+**Description:** Returns a list of all feedback entries made by the specified `userId`, including the recommendation ID, the recommended item name, the feedback, the reasoning, and the source item that led to the recommendation. Optionally filter by source item.
 
 **Requirements:**
 - `userId` is valid.
+- `sourceItem` is optional.
 
 **Effects:**
-- Returns a list of all feedback entries made by the specified `userId`, including the recommended item, the feedback, the reasoning, and the source item that led to the recommendation.
+- Returns a list of all feedback entries made by the specified `userId`.
+- If `sourceItem` is provided, only returns feedback for recommendations from that specific source item.
 
 **Request Body:**
 ```json
 {
-  "userId": "string"
+  "userId": "string",
+  "sourceItem": "string (optional)"
 }
 ```
 
 **Success Response Body (Query):**
 ```json
-[
-  {
-    "item": "string",
-    "feedback": "boolean",
-    "reasoning": "string",
-    "sourceItem": "string"
-  }
-]
+{
+  "history": [
+    {
+      "recommendationId": "string",
+      "item": "string (human-readable name)",
+      "feedback": "boolean",
+      "reasoning": "string",
+      "sourceItem": "string"
+    }
+  ]
+}
 ```
 
 **Error Response Body:**

@@ -153,17 +153,30 @@ export default class RecommendationConcept {
     const sourceItemMBID = (sourceItemMetadata?.id || sourceItem) as Item;
 
     // Fetch user-specific feedback history from this concept's state for the LLM prompt
-    const feedbackHistoryResult = await this._getFeedbackHistory({
+    // Only include feedback for recommendations from this specific source item
+    const feedbackHistoryResult = await this.getFeedbackHistory({
       userId: userId,
+      sourceItem: sourceItemMBID,
     });
     const userFeedbackHistory = feedbackHistoryResult.history || [];
-    // Build a set of names for which the user has already provided feedback (case-insensitive)
+    // Build a set of names for which the user has already provided feedback FOR THIS SOURCE ITEM (case-insensitive)
     const feedbackNameDocs = await this.recommendations.find(
-      { userId: userId, feedback: { $ne: null } },
+      { userId: userId, item1: sourceItemMBID, feedback: { $ne: null } },
       { projection: { itemName: 1 } },
     ).toArray();
     const existingFeedbackNames = new Set(
       feedbackNameDocs
+        .map((d) => (d.itemName || "").toLowerCase())
+        .filter((n) => n.length > 0),
+    );
+
+    // Collect ALL previously recommended item names for THIS SOURCE ITEM (regardless of feedback)
+    const previouslyRecommendedDocs = await this.recommendations.find(
+      { userId: userId, item1: sourceItemMBID },
+      { projection: { itemName: 1 } },
+    ).toArray();
+    const existingRecommendedNames = new Set(
+      previouslyRecommendedDocs
         .map((d) => (d.itemName || "").toLowerCase())
         .filter((n) => n.length > 0),
     );
@@ -188,48 +201,66 @@ export default class RecommendationConcept {
     const mbRelationships = [];
     if (similarArtists && similarArtists.length > 0) {
       mbRelationships.push(
-        `- Similar Artists: ${
-          similarArtists.map((a) =>
-            `${a.name} (MBID: ${a.mbid}, Score: ${a.score})`
-          ).join(", ")
+        `- Similar Artists (${similarArtists.length} total):\n${
+          similarArtists.slice(0, 10).map((a: any) => {
+            const genres = a.sharedGenres || a.genres || [];
+            return `  • ${a.name} - Score: ${a.score.toFixed(2)}${
+              genres.length ? `, Genres: [${genres.join(", ")}]` : ""
+            }`;
+          }).join("\n")
         }`,
       );
     }
     if (similarRecordings && similarRecordings.length > 0) {
       mbRelationships.push(
-        `- Similar Recordings: ${
-          similarRecordings.map((r) =>
-            `${r.title} (MBID: ${r.mbid}, Score: ${r.score})`
-          ).join(", ")
+        `- Similar Recordings (${similarRecordings.length} total):\n${
+          similarRecordings.slice(0, 10).map((r: any) => {
+            const title = r.title || r.name || "Unknown";
+            const genres = r.sharedGenres || r.genres || [];
+            return `  • "${title}"${
+              r.artist ? ` by ${r.artist}` : ""
+            } - Score: ${r.score.toFixed(2)}${
+              genres.length ? `, Genres: [${genres.join(", ")}]` : ""
+            }`;
+          }).join("\n")
         }`,
       );
     }
     if (similarReleaseGroups && similarReleaseGroups.length > 0) {
       mbRelationships.push(
-        `- Similar Albums/Release Groups: ${
-          similarReleaseGroups.map((rg) =>
-            `${rg.title} (MBID: ${rg.mbid}, Score: ${rg.score})`
-          ).join(", ")
+        `- Similar Albums/Release Groups (${similarReleaseGroups.length} total):\n${
+          similarReleaseGroups.slice(0, 10).map((rg: any) => {
+            const title = rg.title || rg.name || "Unknown";
+            const genres = rg.sharedGenres || rg.genres || [];
+            return `  • "${title}"${
+              rg.artist ? ` by ${rg.artist}` : ""
+            } - Score: ${rg.score.toFixed(2)}${
+              genres.length ? `, Genres: [${genres.join(", ")}]` : ""
+            }`;
+          }).join("\n")
         }`,
       );
     }
     // Extract genres/tags from sourceItemMetadata (e.g., from MusicBrainzAPI's getEntityGenres results)
     const sourceGenres =
-      sourceItemMetadata?.genres?.map((g: any) => g.name).join(", ") || "N/A";
+      sourceItemMetadata?.genres?.map((g: MusicBrainzTag) => g.name).join(
+        ", ",
+      ) || "N/A";
     const sourceTags =
-      sourceItemMetadata?.tags?.map((t: any) => t.name).join(", ") || "N/A";
+      sourceItemMetadata?.tags?.map((t: MusicBrainzTag) => t.name).join(", ") ||
+      "N/A";
 
     // Format user feedback history
     const positiveFeedback = userFeedbackHistory
-      .filter((f) => f.feedback === true)
-      .map((f) =>
+      .filter((f: { feedback: boolean }) => f.feedback === true)
+      .map((f: { item: string; sourceItem: Item; reasoning: string }) =>
         `- Item: ${f.item} (Source: ${f.sourceItem}), Reasoning: ${f.reasoning}`
       )
       .join("\n");
 
     const negativeFeedback = userFeedbackHistory
-      .filter((f) => f.feedback === false)
-      .map((f) =>
+      .filter((f: { feedback: boolean }) => f.feedback === false)
+      .map((f: { item: string; sourceItem: Item; reasoning: string }) =>
         `- Item: ${f.item} (Source: ${f.sourceItem}), Reasoning: ${f.reasoning}`
       )
       .join("\n");
@@ -244,6 +275,10 @@ export default class RecommendationConcept {
       mbRelationships,
       positiveFeedback,
       negativeFeedback,
+      previouslyRecommended: Array.from(existingRecommendedNames)
+        .slice(0, 50)
+        .map((n) => `- ${n}`)
+        .join("\n"),
     });
 
     try {
@@ -257,9 +292,6 @@ export default class RecommendationConcept {
       }
 
       const newRecommendations: RecommendationDoc[] = [];
-      const existingFeedbackItems = new Set(
-        userFeedbackHistory.map((f) => f.item),
-      );
 
       for (const rec of parsedRecommendations) {
         // Stop if we've reached the requested amount
@@ -278,7 +310,8 @@ export default class RecommendationConcept {
           rec.name &&
           rec.name !==
             (sourceItemMetadata?.name || sourceItemMetadata?.title) &&
-          !existingFeedbackItems.has(itemId) &&
+          !(normalizedName && existingFeedbackNames.has(normalizedName)) &&
+          !(normalizedName && existingRecommendedNames.has(normalizedName)) &&
           !(normalizedName && existingFeedbackNames.has(normalizedName))
         ) {
           newRecommendations.push({
@@ -341,7 +374,7 @@ export default class RecommendationConcept {
       }[];
     },
     userFeedbackHistory: {
-      item: Item;
+      item: string; // use human-readable name
       feedback: boolean;
       reasoning: string;
       sourceItem: Item;
@@ -378,9 +411,9 @@ export default class RecommendationConcept {
       })
     );
 
-    // Filter out items already in user's feedback history
+    // Filter out items already in user's feedback history (by name, case-insensitive)
     const existingFeedbackItems = new Set(
-      userFeedbackHistory.map((f) => f.item),
+      userFeedbackHistory.map((f) => f.item.toLowerCase()),
     );
 
     const newRecommendations: RecommendationDoc[] = [];
@@ -400,7 +433,7 @@ export default class RecommendationConcept {
           uniqueRecommendedItems.size < amount &&
           !uniqueRecommendedItems.has(itemId) &&
           !seenNames.has(normalizedName) &&
-          !existingFeedbackItems.has(itemId) &&
+          !existingFeedbackItems.has(normalizedName) &&
           !existingFeedbackNames.has(normalizedName)
         ) {
           uniqueRecommendedItems.add(itemId);
@@ -427,17 +460,24 @@ export default class RecommendationConcept {
   }
 
   /**
-   * getRecommendations(userId: User, item: Item, amount: Number): Set<Item>
+   * getRecommendations(userId: User, item: Item, amount: Number, feedbacked?: Boolean): Set<Item>
    *
    * @requires `userId` is valid, `item` exists, `amount` is positive.
    * @effect Returns `amount` of recommended item IDs for the specified `userId` similar to the given `item`,
    *         prioritizing positively-feedbacked items and strictly excluding negatively-feedbacked ones.
+   *         If `feedbacked` is false, only returns recommendations that have NOT received any feedback yet.
    *
    * Retrieves a list of recommended items for a given item and user, prioritizing positively
    * feedbacked recommendations and strictly avoiding negatively feedbacked ones.
    */
   async getRecommendations(
-    params: { userId: User; item: Item; amount: number },
+    params: {
+      userId: User;
+      item: Item;
+      amount: number;
+      feedbacked?: boolean;
+      ignore?: Item[];
+    },
   ): Promise<
     {
       itemsWithReasoning?: {
@@ -449,7 +489,7 @@ export default class RecommendationConcept {
       error?: string;
     }
   > {
-    const { userId, item, amount } = params;
+    const { userId, item, amount, feedbacked = true, ignore = [] } = params;
     if (!userId || !item || amount <= 0) {
       return { error: "Invalid user ID, item or amount specified." };
     }
@@ -477,6 +517,10 @@ export default class RecommendationConcept {
 
         if (recommendedId === item || seenItems.has(recommendedId)) {
           continue; // Skip the source item itself and duplicates
+        }
+
+        if (ignore.includes(recommendedId)) {
+          continue; // Skip items in the ignore list
         }
 
         candidates.push({
@@ -518,14 +562,27 @@ export default class RecommendationConcept {
       for (const candidate of candidates) {
         if (finalWithReasoning.length >= amount) break;
 
-        // Strictly exclude items with negative feedback
-        if (candidate.feedback !== false) {
-          finalWithReasoning.push({
-            item: candidate.recommendedItem,
-            itemName: candidate.itemName,
-            reasoning: candidate.reasoning,
-            confidence: candidate.confidence,
-          });
+        // Apply feedback filtering based on 'feedbacked' parameter
+        if (feedbacked) {
+          // Default behavior: exclude items with negative feedback only
+          if (candidate.feedback !== false) {
+            finalWithReasoning.push({
+              item: candidate.recommendedItem,
+              itemName: candidate.itemName,
+              reasoning: candidate.reasoning,
+              confidence: candidate.confidence,
+            });
+          }
+        } else {
+          // feedbacked=false: only include items with NO feedback (null)
+          if (candidate.feedback === null) {
+            finalWithReasoning.push({
+              item: candidate.recommendedItem,
+              itemName: candidate.itemName,
+              reasoning: candidate.reasoning,
+              confidence: candidate.confidence,
+            });
+          }
         }
       }
 
@@ -582,6 +639,39 @@ export default class RecommendationConcept {
   }
 
   /**
+   * deleteRecommendation(recommendationId: ID)
+   *
+   * @requires `recommendationId` is valid and exists.
+   * @effect Removes the specific recommendation with the given ID from the concept's state.
+   *
+   * Deletes a single recommendation by its ID.
+   */
+  async deleteRecommendation(
+    params: { recommendationId: ID },
+  ): Promise<Empty | { error: string }> {
+    const { recommendationId } = params;
+    if (!recommendationId) {
+      return { error: "Recommendation ID not specified." };
+    }
+    try {
+      const result = await this.recommendations.deleteOne({
+        _id: recommendationId,
+      });
+      if (result.deletedCount === 0) {
+        return { error: "No recommendation found with the provided ID." };
+      }
+      return {};
+    } catch (e) {
+      console.error("Error deleting recommendation:", e);
+      return {
+        error: `Failed to delete recommendation: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      };
+    }
+  }
+
+  /**
    * clearRecommendations(userId?: User)
    *
    * @effect Removes all stored recommendations and feedback for the specified `userId`. If no `userId` is provided, all recommendations in the concept are cleared.
@@ -607,18 +697,22 @@ export default class RecommendationConcept {
   }
 
   /**
-   * _getFeedbackHistory(userId: User): List<{ item: Item; feedback: Boolean; reasoning: String; sourceItem: Item }>
+   * getFeedbackHistory(userId: User, sourceItem?: Item): List<{ recommendationId: ID; item: String; feedback: Boolean; reasoning: String; sourceItem: Item }>
    *
-   * @effect Returns a list of all feedback entries made by the specified `userId`, including the recommended item,
-   *         the feedback, the reasoning, and the source item that led to the recommendation.
-   *         This query is used internally by the `generate` action to provide context to the LLM.
+   * @requires `userId` is valid.
+   * @effect Returns a list of all feedback entries made by the specified `userId`, including the recommendation ID,
+   *         the recommended item name, the feedback, the reasoning, and the source item that led to the recommendation.
+   *         If `sourceItem` is provided, only returns feedback for recommendations from that specific source item.
+   *
+   * Retrieves feedback history for a user, optionally filtered by source item.
    */
-  async _getFeedbackHistory(
-    params: { userId: User },
+  async getFeedbackHistory(
+    params: { userId: User; sourceItem?: Item },
   ): Promise<
     {
       history?: {
-        item: Item;
+        recommendationId: ID;
+        item: string;
         feedback: boolean;
         reasoning: string;
         sourceItem: Item;
@@ -626,18 +720,26 @@ export default class RecommendationConcept {
       error?: string;
     }
   > {
-    const { userId } = params;
+    const { userId, sourceItem } = params;
     if (!userId) {
       return { error: "User ID not specified." };
     }
     try {
-      const feedbackDocs = await this.recommendations.find({
+      const filter: any = {
         userId: userId,
         feedback: { $ne: null }, // Only retrieve items where feedback has been provided
-      }).toArray();
+      };
+
+      // If sourceItem is provided, only get feedback for that specific source item
+      if (sourceItem) {
+        filter.item1 = sourceItem;
+      }
+
+      const feedbackDocs = await this.recommendations.find(filter).toArray();
 
       const history = feedbackDocs.map((doc) => ({
-        item: doc.item2, // The item that was recommended and received feedback
+        recommendationId: doc._id,
+        item: doc.itemName || String(doc.item2), // Prefer human-readable name for the item
         feedback: doc.feedback!, // Non-null asserted because of query
         reasoning: doc.reasoning,
         sourceItem: doc.item1,
@@ -667,6 +769,7 @@ export default class RecommendationConcept {
     mbRelationships: string[];
     positiveFeedback: string;
     negativeFeedback: string;
+    previouslyRecommended: string;
   }): string {
     const {
       userId,
@@ -678,6 +781,7 @@ export default class RecommendationConcept {
       mbRelationships,
       positiveFeedback,
       negativeFeedback,
+      previouslyRecommended,
     } = params;
     console.log("Building recommendation prompt for user", userId);
     console.log("Source item:", sourceItemMetadata);
@@ -688,14 +792,37 @@ export default class RecommendationConcept {
     console.log("Positive feedback:", positiveFeedback);
     console.log("Negative feedback:", negativeFeedback);
 
-    return `You are a music recommendation assistant. Your task is to recommend music items similar to a source item based on musical characteristics.
+    return `You are a music recommendation assistant. Your task is to recommend music items similar to a source item based on MUSICAL CHARACTERISTICS from MusicBrainz data.
 
 TASK: Generate exactly ${amount} unique music recommendations for user ${userId}.
 
 OUTPUT FORMAT: JSON array of objects with these fields:
-- "name": string (artist/song/album name)
-- "reasoning": string (2-3 sentences explaining why this is similar based on musical attributes)
+- "name": string - non-artist suggestions MUST be formatted as "Artist - Title" (e.g., "Miles Davis - Kind of Blue", "Bill Evans - Waltz for Debby"). Only use title alone if no artist info exists. If source item is an artist, only use the artist name.
+- "reasoning": string (1-2 sentences) - Write naturally as if describing the music to a friend. Focus on shared genres and what makes it similar.
 - "confidence": number (0.0 to 1.0, realistic similarity score based on genres and metadata)
+
+EXAMPLES OF GOOD OUTPUT:
+
+Song recommendation:
+{
+  "name": "Bill Evans - Waltz for Debby",
+  "reasoning": "Shares the vocal jazz and jazz pop genres. Features piano-driven arrangements with intimate vocal performances.",
+  "confidence": 0.85
+}
+
+Artist recommendation:
+{
+  "name": "Chet Baker",
+  "reasoning": "Both feature soft, intimate vocal jazz with minimal instrumentation in the cool jazz tradition.",
+  "confidence": 0.82
+}
+
+BAD OUTPUT (DO NOT WRITE LIKE THIS):
+{
+  "name": "Waltz for Debby",  ❌ Missing artist
+  "reasoning": "This album likely features similar arrangements. It might appeal to listeners.",  ❌ Vague and hedging
+  "confidence": 0.85
+}
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -712,33 +839,54 @@ MUSICAL CHARACTERISTICS:
 • Genres: ${sourceGenres}
 • User Tags: ${sourceTags}
 
-CONTEXT FROM MUSICBRAINZ (for reference):
+SIMILAR ITEMS FROM MUSICBRAINZ DATABASE:
 ${
       mbRelationships.length > 0
         ? mbRelationships.join("\n")
         : "- Limited information available from MusicBrainz."
     }
 
-USER ${userId}'S PREFERENCE HISTORY:
+⚠️ PRIORITIZE RECOMMENDATIONS FROM THE MUSICBRAINZ SIMILAR ITEMS ABOVE ⚠️
+These items have been algorithmically matched based on genre/tag overlap and musical similarity.
+If you know of entities that are more similar to the source item based on musical qualities, you may suggest them.
+
+USER ${userId}'S PREFERENCE HISTORY FOR THIS SOURCE ITEM:
 ✓ Previously Liked: ${positiveFeedback || "None yet"}
 ✗ Previously Disliked: ${negativeFeedback || "None yet"}
+
+PREVIOUSLY RECOMMENDED (DO NOT REPEAT):
+${
+      previouslyRecommended && previouslyRecommended.length > 0
+        ? previouslyRecommended
+        : "None yet"
+    }
 
 ═══════════════════════════════════════════════════════════════════
 
 RECOMMENDATION GUIDELINES:
-1. Generate recommendations that share MUSICAL attributes with the source: genres, styles, instrumentation, mood, era
-2. The confidence score should reflect realistic similarity based on the genres and metadata above
-3. Consider the user's preference history - favor patterns from liked items, avoid patterns from disliked items
-4. Recommendations can include items from the MusicBrainz context above OR similar well-known items in the same musical space
+1. Select recommendations from the MusicBrainz similar items listed above, choosing those with highest scores and most shared genres
+2. Only if MusicBrainz data is insufficient, suggest well-known items in the SAME GENRES (${sourceGenres})
+3. Generate recommendations that share MUSICAL attributes: genres, styles, instrumentation, mood
+4. Consider the user's preference history for THIS source item only
 5. Ensure all ${amount} recommendations are unique and different from the source item
-6. Provide clear reasoning that references specific musical characteristics
-7. For more obscure artists/items, feel free to recommend well-known artists with similar characteristics
+6. Write reasoning in natural, conversational language:
+   - Start directly with shared characteristics ("Shares the X and Y genres")
+   - NO robotic phrases like "This album shares", "This release group is", "This recommendation falls within"
+   - Use active, direct statements: "Features X", "Blends Y and Z", "Combines A with B"
+   - Keep it concise and music-focused
+7. Confidence scores should reflect actual genre/tag overlap from the MusicBrainz data
 
 CRITICAL CONSTRAINTS:
+⚠ NEVER recommend based on superficial title similarity (e.g., don't recommend "Dream On" for "Dreamer")
 ⚠ NEVER recommend the source item itself
-⚠ NEVER recommend items the user has already provided feedback on
+⚠ NEVER recommend items the user has already provided feedback on for this source
 ⚠ Base confidence scores on actual genre/style similarity (don't give high scores unless truly similar)
-⚠ Focus on musical similarity, not superficial attributes like names or release dates`;
+⚠ If genres are empty but MusicBrainz similar items exist, use those items as your recommendations
+⚠ Focus on MUSICAL SIMILARITY from the data, not name/title patterns or general knowledge
+⚠ DO NOT use hedging language like "likely", "probably", "might", "could", "may", "potentially"
+⚠ DO NOT start reasoning with "This album", "This release", "This recommendation", "This track"
+⚠ Keep reasoning to 1-2 sentences that state concrete similarities
+⚠ ALWAYS format names as "Artist - Title" for non-artist recommendations`;
   }
 
   /**
@@ -748,6 +896,7 @@ CRITICAL CONSTRAINTS:
   private _parseJSONFromLLMResponse(
     text: string,
   ): LLMRecommendationOutput[] | null {
+    console.log("LLM response:", text);
     try {
       // First, try to extract JSON from markdown code blocks
       const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);

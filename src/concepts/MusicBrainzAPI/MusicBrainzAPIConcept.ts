@@ -329,85 +329,112 @@ export default class MusicBrainzAPIConcept {
       }
     }
 
-    // 2. Enforce rate limit
-    await this._waitForRateLimit();
+    // 2. Enforce rate limit and Make the API call with retries
+    const maxAttempts = 3;
+    let lastError: unknown = undefined;
+    let data: any = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this._waitForRateLimit();
+        const response = await fetch(requestUrl.toString(), {
+          headers: {
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
+          },
+        });
 
-    // 3. Make the API call
-    try {
-      const response = await fetch(requestUrl.toString(), {
-        headers: { "User-Agent": USER_AGENT },
-      });
-
-      if (!response.ok) {
-        await response.body?.cancel();
-        if (response.status === 404 || response.status === 400) {
-          return { error: `Entity not found: ${mbid}` };
+        if (!response.ok) {
+          await response.body?.cancel();
+          if (response.status === 404 || response.status === 400) {
+            return { error: `Entity not found: ${mbid}` };
+          }
+          // Retry on transient server errors
+          if ([429, 500, 502, 503, 504].includes(response.status)) {
+            lastError = new Error(
+              `MusicBrainz API error: ${response.status} ${response.statusText}`,
+            );
+          } else {
+            throw new Error(
+              `MusicBrainz API error: ${response.status} ${response.statusText}`,
+            );
+          }
+        } else {
+          data = await response.json();
+          lastError = undefined;
+          break;
         }
-        throw new Error(
-          `MusicBrainz API error: ${response.status} ${response.statusText}`,
-        );
+      } catch (error: unknown) {
+        // Network or fetch error, capture and retry
+        lastError = error;
       }
 
-      const data = await response.json();
-
-      // 4. Cache the result
-      const cacheUpdate: Partial<EntityCache> & {
-        cacheKey: string;
-        lastFetched: Date;
-      } = {
-        cacheKey,
-        lastFetched: new Date(),
-      };
-
-      if (
-        entityType === "artist" ||
-        entityType === "recording" ||
-        entityType === "release" ||
-        entityType === "release-group" ||
-        entityType === "work"
-      ) {
-        Object.assign(cacheUpdate, {
-          mbid: mbid,
-          entityType: entityType,
-          metadata: data,
-        });
-      } else { // This handles search and browse
-        Object.assign(cacheUpdate, {
-          mbid: mbid, // Can be null for search/browse but still useful
-          entityType: entityType, // Store the type for reference
-          metadata: data, // Store full response for search/browse
-          relationships: data.relations || data.artists || data.recordings ||
-            data.releases || data["release-groups"] || data.works, // Extract specific lists if available
-        });
+      // If we will retry, wait with exponential backoff + small jitter
+      if (attempt < maxAttempts) {
+        const backoffMs = Math.min(4000, 500 * Math.pow(2, attempt - 1));
+        const jitter = Math.floor(Math.random() * 150);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs + jitter));
       }
+    }
 
-      await cacheCollection.updateOne(
-        { cacheKey },
-        {
-          $set: cacheUpdate,
-          $setOnInsert: { _id: freshID() }, // Generate ID only on first insert
-        },
-        { upsert: true },
-      );
-      // console.log(`MusicBrainzAPI: Cached ${cacheKey}`);
-
-      // Return the actual data part for different request types
-      if (entityType === "search" || entityType === "browse") {
-        return cacheUpdate.metadata as T;
-      }
-      return (cacheUpdate.metadata || cacheUpdate.relationships) as T;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error
-        ? error.message
-        : String(error);
+    if (lastError) {
+      const errorMessage = lastError instanceof Error
+        ? lastError.message
+        : String(lastError);
       console.error(
         `MusicBrainzAPI: Error fetching ${requestUrl.toString()}:`,
-        error,
+        lastError,
       );
       return {
         error: `Failed to fetch from MusicBrainz API: ${errorMessage}`,
       };
     }
+
+    // 4. Cache the result
+    const cacheUpdate: Partial<EntityCache> & {
+      cacheKey: string;
+      lastFetched: Date;
+    } = {
+      cacheKey,
+      lastFetched: new Date(),
+    };
+
+    if (
+      entityType === "artist" ||
+      entityType === "recording" ||
+      entityType === "release" ||
+      entityType === "release-group" ||
+      entityType === "work"
+    ) {
+      Object.assign(cacheUpdate, {
+        mbid: mbid,
+        entityType: entityType,
+        metadata: data,
+      });
+    } else { // This handles search and browse
+      Object.assign(cacheUpdate, {
+        mbid: mbid, // Can be null for search/browse but still useful
+        entityType: entityType, // Store the type for reference
+        metadata: data, // Store full response for search/browse
+        relationships: data.relations || data.artists || data.recordings ||
+          data.releases || data["release-groups"] || data.works, // Extract specific lists if available
+      });
+    }
+
+    await cacheCollection.updateOne(
+      { cacheKey },
+      {
+        $set: cacheUpdate,
+        $setOnInsert: { _id: freshID() }, // Generate ID only on first insert
+      },
+      { upsert: true },
+    );
+    // console.log(`MusicBrainzAPI: Cached ${cacheKey}`);
+
+    // Return the actual data part for different request types
+    if (entityType === "search" || entityType === "browse") {
+      return cacheUpdate.metadata as T;
+    }
+    return (cacheUpdate.metadata || cacheUpdate.relationships) as T;
   }
 
   /**
@@ -732,121 +759,73 @@ export default class MusicBrainzAPIConcept {
   > {
     if (!artistMbid) return { error: "artistMbid is required." };
 
-    // Step 1: Get the source artist's full details with genres and tags
+    // Step 1: Get the source artist's genres/tags
     const artistResult = await this.lookupArtist({
       mbid: artistMbid,
       includes: ["tags", "genres"],
     });
-
     if ("error" in artistResult || !artistResult.artist) {
       return { error: "Could not fetch artist details." };
     }
-
     const sourceArtist = artistResult.artist;
     const genres = (sourceArtist.tags || []).sort(
       (a: MBTag, b: MBTag) => b.count - a.count,
     );
-
     console.log("genres for ", artistMbid, ": ", genres);
-
     if (genres.length === 0) {
       return {
         similarArtists: [],
-        error:
-          "No genres or tags found for this artist. Cannot compute similarities.",
+        error: "No genres/tags found for this artist.",
       };
     }
 
-    // Step 2: Take top genres/tags (weighted by count)
+    // Step 2: Search by top tags and aggregate candidates without extra fetches
     const topGenres = genres.slice(0, 5);
-
-    // Step 3: Search for artists and verify their tags
-    // We'll use a broader search and then filter by actual tag overlap
     const artistCandidates = new Map<
       string,
-      { name: string; tags: MBTag[]; sharedTags: Set<string>; score: number }
+      { name: string; sharedTags: Set<string>; score: number }
     >();
-
-    // Search for each top genre separately to get better coverage
-    // MusicBrainz uses Lucene query syntax
-    const maxTotalArtistCandidates = limit * 3;
+    const maxTotalArtistCandidates = limit * 4;
     for (const genre of topGenres.slice(0, 3)) {
       if (artistCandidates.size >= maxTotalArtistCandidates) break;
       let processedForGenre = 0;
       const maxPerGenre = Math.max(10, limit);
-      // Use proper Lucene syntax: search in tag field
-      // Note: tag search in MusicBrainz searches artist tags
       const searchResult = await this.searchEntities({
         query: `tag:"${genre.name}"`,
         entityType: "artist",
-        limit: 15,
+        limit: 20,
       });
-
       if ("error" in searchResult || !searchResult.results) continue;
 
-      // For each artist found, fetch their full tags to verify similarity
-      for (const artistResult of searchResult.results) {
-        // Skip the original artist
-        if (artistResult.id === artistMbid) continue;
+      for (const a of searchResult.results) {
+        if (a.id === artistMbid) continue;
+        const name = a.name || "Unknown";
+        const searchScore = typeof a.score === "number"
+          ? a.score
+          : parseInt(String(a.score)) || 0;
 
-        // Skip if we already processed this artist
-        if (artistCandidates.has(artistResult.id)) {
-          const candidate = artistCandidates.get(artistResult.id)!;
-          candidate.sharedTags.add(genre.name);
-          // Boost score for additional shared tag
-          candidate.score += Math.sqrt(genre.count) * 2;
-          continue;
-        }
-
-        // Fetch full artist details with tags to verify actual tag overlap
-        const candidateResult = await this.lookupArtist({
-          mbid: artistResult.id as ID,
-          includes: ["tags"],
-        });
-
-        if ("error" in candidateResult || !candidateResult.artist) continue;
-
-        const candidateTags = candidateResult.artist.tags || [];
-
-        // Calculate shared tags and score
-        const sharedTags = new Set<string>();
-        let score = 0;
-
-        for (const sourceTag of topGenres) {
-          const matchingTag = candidateTags.find(
-            (t: MBTag) => t.name.toLowerCase() === sourceTag.name.toLowerCase(),
-          );
-          if (matchingTag) {
-            sharedTags.add(sourceTag.name);
-            // Higher weight for tags that are important to both artists
-            score += Math.sqrt(sourceTag.count * matchingTag.count);
-          }
-        }
-
-        // Only include artists with at least one shared tag
-        if (sharedTags.size > 0) {
-          // Boost score by search relevance score
-          const searchScore = parseInt(artistResult.score as any) || 0;
-          score += searchScore / 10;
-
-          artistCandidates.set(artistResult.id, {
-            name: artistResult.name || "Unknown",
-            tags: candidateTags,
-            sharedTags,
-            score,
+        if (artistCandidates.has(a.id)) {
+          const c = artistCandidates.get(a.id)!;
+          c.sharedTags.add(genre.name);
+          c.score += Math.sqrt(genre.count) * 2;
+        } else {
+          artistCandidates.set(a.id, {
+            name,
+            sharedTags: new Set<string>([genre.name]),
+            score: Math.sqrt(genre.count) * 2 + (searchScore / 10),
           });
           processedForGenre++;
           if (
             processedForGenre >= maxPerGenre ||
             artistCandidates.size >= maxTotalArtistCandidates
-          ) {
-            break;
-          }
+          ) break;
         }
       }
+      console.log(
+        `Processed tag "${genre.name}" for artist ${artistMbid}; candidates: ${artistCandidates.size}`,
+      );
     }
 
-    // Step 4: Sort by score and format results
     const similarArtists = Array.from(artistCandidates.entries())
       .map(([mbid, data]) => ({
         mbid,
@@ -984,7 +963,7 @@ export default class MusicBrainzAPIConcept {
     }
 
     const sourceRecording = recordingResult.recording;
-    
+
     // Get artist info for additional context
     const artistCredit = sourceRecording["artist-credit"]?.[0];
     const artistName = artistCredit?.name || artistCredit?.artist?.name;
@@ -994,23 +973,46 @@ export default class MusicBrainzAPIConcept {
     let tags: MBTag[] = [];
     if (sourceRecording.releases && sourceRecording.releases.length > 0) {
       // Get the first release's genres - prefer official releases
-      const officialRelease = sourceRecording.releases.find(r => r.status === "Official") || sourceRecording.releases[0];
-      
+      const officialRelease = sourceRecording.releases.find((r) =>
+        r.status === "Official"
+      ) || sourceRecording.releases[0];
+
       const releaseGenresResult = await this.getEntityGenres({
         mbid: officialRelease.id as ID,
         entityType: "release",
       });
-      
+
       if (!("error" in releaseGenresResult)) {
         // Combine genres and tags, prioritizing genres
         tags = [
           ...(releaseGenresResult.genres || []),
-          ...(releaseGenresResult.tags || [])
+          ...(releaseGenresResult.tags || []),
         ].sort((a: MBTag, b: MBTag) => b.count - a.count);
       }
     }
 
     console.log("tags for recording ", recordingMbid, " (from album): ", tags);
+
+    // If album doesn't have tags, fall back to artist genres
+    if (tags.length === 0 && artistId) {
+      const artistGenresResult = await this.getEntityGenres({
+        mbid: artistId as ID,
+        entityType: "artist",
+      });
+
+      if (!("error" in artistGenresResult)) {
+        tags = [
+          ...(artistGenresResult.genres || []),
+          ...(artistGenresResult.tags || []),
+        ].sort((a: MBTag, b: MBTag) => b.count - a.count);
+        console.log(
+          "tags for recording ",
+          recordingMbid,
+          " (from artist fallback): ",
+          tags,
+        );
+      }
+    }
 
     if (tags.length === 0 && !artistId) {
       return {
@@ -1050,98 +1052,55 @@ export default class MusicBrainzAPIConcept {
         for (const recResult of searchResult.results) {
           if (recResult.id === recordingMbid) continue;
 
-          // Skip if already processed
+          // Compute lightweight fields from search result to avoid extra API calls
+          const candidateArtistCredit = recResult["artist-credit"]?.[0] as
+            | { name?: string; artist?: { name?: string } }
+            | undefined;
+          const candidateArtistName = candidateArtistCredit?.name ||
+            candidateArtistCredit?.artist?.name;
+
+          // Skip if already processed: just accumulate tag and boost score
           if (recordingCandidates.has(recResult.id)) {
             const candidate = recordingCandidates.get(recResult.id)!;
             candidate.sharedTags.add(tag.name);
-            // Boost score for additional shared tag
             candidate.score += Math.sqrt(tag.count) * 2;
             continue;
           }
 
-          // Fetch full recording details with releases to get album genres
-          const candidateResult = await this.lookupRecording({
-            mbid: recResult.id as ID,
-            includes: ["releases", "artist-credits"],
-          });
-
-          if ("error" in candidateResult || !candidateResult.recording) {
-            continue;
-          }
-
-          const candidateArtistCredit = candidateResult
-            .recording["artist-credit"]?.[0];
-          const candidateArtistName = candidateArtistCredit?.name ||
-            candidateArtistCredit?.artist?.name;
-
-          // Fetch genres from the candidate recording's album
-          let candidateTags: MBTag[] = [];
-          if (candidateResult.recording.releases && candidateResult.recording.releases.length > 0) {
-            const candidateRelease = candidateResult.recording.releases.find(r => r.status === "Official") || 
-                                     candidateResult.recording.releases[0];
-            
-            const candidateGenresResult = await this.getEntityGenres({
-              mbid: candidateRelease.id as ID,
-              entityType: "release",
-            });
-            
-            if (!("error" in candidateGenresResult)) {
-              candidateTags = [
-                ...(candidateGenresResult.genres || []),
-                ...(candidateGenresResult.tags || [])
-              ].sort((a: MBTag, b: MBTag) => b.count - a.count);
-            }
-          }
-
-          // Calculate shared tags and score
-          const sharedTags = new Set<string>();
-          let score = 0;
-
-          for (const sourceTag of topTags) {
-            const matchingTag = candidateTags.find(
-              (t: MBTag) =>
-                t.name.toLowerCase() === sourceTag.name.toLowerCase(),
-            );
-            if (matchingTag) {
-              sharedTags.add(sourceTag.name);
-              // Score based on both source and candidate tag counts
-              score += Math.sqrt(sourceTag.count * matchingTag.count);
-            }
-          }
+          // Initial scoring without fetching candidate details
+          const sharedTags = new Set<string>([tag.name]);
+          let score = Math.sqrt(tag.count) * 2;
+          const searchScore = typeof recResult.score === "number"
+            ? recResult.score
+            : parseInt(String(recResult.score)) || 0;
+          score += searchScore / 10;
 
           // Bonus for same artist
           if (
             artistName && candidateArtistName &&
             artistName.toLowerCase() === candidateArtistName.toLowerCase()
           ) {
-            score += 50; // Significant boost for same artist
+            score += 50;
           }
 
-          // Only include recordings with at least one shared tag
-          if (sharedTags.size > 0) {
-            // Boost score by search relevance
-            const searchScore = typeof recResult.score === "number"
-              ? recResult.score
-              : parseInt(String(recResult.score)) || 0;
-            score += searchScore / 10;
-
-            recordingCandidates.set(recResult.id, {
-              title: candidateResult.recording.title || recResult.title ||
-                "Unknown",
-              artist: candidateArtistName,
-              tags: candidateTags,
-              sharedTags,
-              score,
-            });
-            processedForTag++;
-            if (
-              processedForTag >= maxPerTag ||
-              recordingCandidates.size >= maxTotalRecordingCandidates
-            ) {
-              break;
-            }
+          recordingCandidates.set(recResult.id, {
+            title: recResult.title || "Unknown",
+            artist: candidateArtistName,
+            tags: [],
+            sharedTags,
+            score,
+          });
+          processedForTag++;
+          if (
+            processedForTag >= maxPerTag ||
+            recordingCandidates.size >= maxTotalRecordingCandidates
+          ) {
+            break;
           }
         }
+        console.log(
+          `Processed tag "${tag.name}" for recording ${recordingMbid}; candidates so far: ${recordingCandidates.size}`,
+        );
       }
     }
 
@@ -1224,7 +1183,7 @@ export default class MusicBrainzAPIConcept {
     }
 
     const sourceReleaseGroup = releaseGroupResult.releaseGroup;
-    const tags = (sourceReleaseGroup.tags || []).sort(
+    let tags = (sourceReleaseGroup.tags || []).sort(
       (a: MBTag, b: MBTag) => b.count - a.count,
     );
 
@@ -1233,6 +1192,27 @@ export default class MusicBrainzAPIConcept {
     const artistName = artistCredit?.name || artistCredit?.artist?.name;
     const artistId = artistCredit?.artist?.id;
     console.log("tags for release group ", releaseGroupMbid, ": ", tags);
+
+    // If release-group doesn't have tags, fall back to artist genres
+    if (tags.length === 0 && artistId) {
+      const artistGenresResult = await this.getEntityGenres({
+        mbid: artistId as ID,
+        entityType: "artist",
+      });
+
+      if (!("error" in artistGenresResult)) {
+        tags = [
+          ...(artistGenresResult.genres || []),
+          ...(artistGenresResult.tags || []),
+        ].sort((a: MBTag, b: MBTag) => b.count - a.count);
+        console.log(
+          "tags for release group ",
+          releaseGroupMbid,
+          " (from artist fallback): ",
+          tags,
+        );
+      }
+    }
 
     if (tags.length === 0 && !artistId) {
       return {
@@ -1252,89 +1232,48 @@ export default class MusicBrainzAPIConcept {
       }
     >();
 
-    // Strategy 1: Search by tags if available
+    // Strategy 1: Search by tags if available (no per-candidate fetches)
     if (tags.length > 0) {
       const topTags = tags.slice(0, 5);
-
+      const maxTotalReleaseGroupCandidates = limit * 4;
       for (const tag of topTags) {
-        // Use proper Lucene syntax for tag search
         const searchResult = await this.searchEntities({
           query: `tag:"${tag.name}"`,
           entityType: "release-group",
           limit: 20,
         });
-
         if ("error" in searchResult || !searchResult.results) continue;
-
         let processedForTag = 0;
         const maxPerTag = Math.max(10, limit);
-        const maxTotalReleaseGroupCandidates = limit * 3;
         for (const rgResult of searchResult.results) {
           if (rgResult.id === releaseGroupMbid) continue;
 
-          // Skip if already processed
-          if (releaseGroupCandidates.has(rgResult.id)) {
-            const candidate = releaseGroupCandidates.get(rgResult.id)!;
-            candidate.sharedTags.add(tag.name);
-            // Boost score for additional shared tag
-            candidate.score += Math.sqrt(tag.count) * 2;
-            continue;
-          }
-
-          // Fetch full release group details to verify tags
-          const candidateResult = await this.lookupReleaseGroup({
-            mbid: rgResult.id as ID,
-            includes: ["tags", "artist-credits"],
-          });
-
-          if ("error" in candidateResult || !candidateResult.releaseGroup) {
-            continue;
-          }
-
-          const candidateTags = candidateResult.releaseGroup.tags || [];
-          const candidateArtistCredit = candidateResult
-            .releaseGroup["artist-credit"]?.[0];
+          const candidateArtistCredit = rgResult["artist-credit"]?.[0] as
+            | { name?: string; artist?: { name?: string } }
+            | undefined;
           const candidateArtistName = candidateArtistCredit?.name ||
             candidateArtistCredit?.artist?.name;
 
-          // Calculate shared tags and score
-          const sharedTags = new Set<string>();
-          let score = 0;
-
-          for (const sourceTag of topTags) {
-            const matchingTag = candidateTags.find(
-              (t: MBTag) =>
-                t.name.toLowerCase() === sourceTag.name.toLowerCase(),
-            );
-            if (matchingTag) {
-              sharedTags.add(sourceTag.name);
-              // Score based on both source and candidate tag counts
-              score += Math.sqrt(sourceTag.count * matchingTag.count);
-            }
-          }
-
-          // Bonus for same artist
-          if (
-            artistName && candidateArtistName &&
-            artistName.toLowerCase() === candidateArtistName.toLowerCase()
-          ) {
-            score += 40; // Significant boost for same artist
-          }
-
-          // Only include release groups with at least one shared tag
-          if (sharedTags.size > 0) {
-            // Boost score by search relevance
+          if (releaseGroupCandidates.has(rgResult.id)) {
+            const c = releaseGroupCandidates.get(rgResult.id)!;
+            c.sharedTags.add(tag.name);
+            c.score += Math.sqrt(tag.count) * 2;
+          } else {
             const searchScore = typeof rgResult.score === "number"
               ? rgResult.score
               : parseInt(String(rgResult.score)) || 0;
-            score += searchScore / 10;
-
+            let score = Math.sqrt(tag.count) * 2 + (searchScore / 10);
+            if (
+              artistName && candidateArtistName &&
+              artistName.toLowerCase() === candidateArtistName.toLowerCase()
+            ) {
+              score += 40;
+            }
             releaseGroupCandidates.set(rgResult.id, {
-              title: candidateResult.releaseGroup.title || rgResult.title ||
-                "Unknown",
+              title: rgResult.title || "Unknown",
               artist: candidateArtistName,
-              tags: candidateTags,
-              sharedTags,
+              tags: [],
+              sharedTags: new Set<string>([tag.name]),
               score,
             });
             processedForTag++;
@@ -1346,37 +1285,39 @@ export default class MusicBrainzAPIConcept {
             }
           }
         }
+        console.log(
+          `Processed tag "${tag.name}" for release-group ${releaseGroupMbid}; candidates: ${releaseGroupCandidates.size}`,
+        );
+        if (releaseGroupCandidates.size >= maxTotalReleaseGroupCandidates) {
+          break;
+        }
       }
     }
 
-    // Strategy 2: If we have artist info, search for other release groups by same artist
+    // Strategy 2: Same-artist fallback without extra fetches
     if (artistName && releaseGroupCandidates.size < limit) {
       const artistSearchResult = await this.searchEntities({
         query: `artist:"${artistName}"`,
         entityType: "release-group",
         limit: 15,
       });
-
-      if (
-        !(
-          "error" in artistSearchResult
-        ) && artistSearchResult.results
-      ) {
+      if (!("error" in artistSearchResult) && artistSearchResult.results) {
         for (const rgResult of artistSearchResult.results) {
           if (rgResult.id === releaseGroupMbid) continue;
           if (releaseGroupCandidates.has(rgResult.id)) continue;
 
-          const candidateArtistCredit = rgResult["artist-credit"]?.[0];
+          const candidateArtistCredit = rgResult["artist-credit"]?.[0] as
+            | { name?: string; artist?: { name?: string } }
+            | undefined;
           const candidateArtistName = candidateArtistCredit?.name ||
-            (candidateArtistCredit as { artist?: { name?: string } })?.artist
-              ?.name;
+            candidateArtistCredit?.artist?.name;
 
           releaseGroupCandidates.set(rgResult.id, {
             title: rgResult.title || "Unknown",
             artist: candidateArtistName,
             tags: [],
-            sharedTags: new Set(["same artist"]),
-            score: 25, // Base score for same artist
+            sharedTags: new Set<string>(["same artist"]),
+            score: 25,
           });
         }
       }
