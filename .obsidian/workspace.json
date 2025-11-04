@@ -240,8 +240,14 @@
       "bases:Create new base": false
     }
   },
-  "active": "d7c23dd45565a750",
+  "active": "9b42b4503c7d88ad",
   "lastOpenFiles": [
+    "visual_design_2.png",
+    "visual_design_1.png",
+    "RELECTION.md",
+    "DEMO_CONSOLE_TRACE.md",
+    "DEMO_TRACE.md",
+    "DESIGN_NOTES.md",
     "design/concepts/Recommendation/api.md",
     "MusicBrainz API _ Search - MusicBrainz.htm",
     "MusicBrainz API - MusicBrainz.htm",
@@ -265,10 +271,6 @@
     "context/design/tools/api-extraction-from-code.md/steps/concept.8b768a14.md",
     "design/concepts/Recommendation/implementation.md",
     "design/tools/api-extraction-from-code.md",
-    "design/tools/api-extraction-from-spec.md",
-    "design/concepts/User/api.md",
-    "design/concepts/ListenBrainzAPI/api.md",
-    "design/concepts/MusicBrainzAPI/api.md",
     "src/concepts/ListenBrainzAPI/ListenBrainzAPIConcept.test.ts",
     "src/concepts/ListenBrainzAPI/ListenBrainzAPIConcept.ts",
     "src/concepts/MusicBrainzAPI/MusicBrainzAPIConcept.test.ts",

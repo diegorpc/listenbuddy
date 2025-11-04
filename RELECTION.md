@@ -1,0 +1,11 @@
+# Experience
+Despite being new to Vue, I've developed and deployed web apps with React so I had a strong grasp of the workflow and a general timeline, as well as having experience coding with agentic AIs going into this project. 
+
+One of my biggest takeaways from this project was to make an active effort during early development to clearly identify all the features the app should present, as well as verifying that any external APIs used would be able to provide the data needed for the proposed computations. I had to adapt and basically entirely rework the implementation of Recommendation following the limitations that were exposed after actually interacting with the APIs with Postman.
+
+Writing software is very enjoyable for me so I had a very positive experience with this project.
+
+# Context & AI
+I agree that context is an incredibly important part of writing software alongside AI and even before this class I placed a lot of value on the quality of my prompting and writing context files for a project to be able to prime agents with. As an aside I understand and relate to finding agentic development somewhat unconscionable primarily due to the extreme cost it does to our environment however in the spirit of this class I also strongly believe it's an increasingly powerful tool for development and I appreciated the emphasis on context based AI tools as I think it refines and makes for much more effective and efficient prompting.
+
+I generally interacted with AI through Windsurf's Cascade and not so much with the actual context tool, but I found the documents in the design folder incredibly useful. I have little to no experience with CLI AI tools and similar, more barebones tools like Vim, as I prefer agentic tools ala Cascade and Cursor and doing version management with git, which is the main reason I didn't use the context tool very much and wasn't very good at version management with it. Also Anthropic makes far superior models for software development by my estimation.
