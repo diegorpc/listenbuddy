@@ -27,7 +27,6 @@ export const UserLoginResponse: Sync = ({
   username,
   scrobbleToken,
   listenBrainzName,
-  error,
 }) => ({
   when: actions(
     [Requesting.request, { path: "/User/startSession" }, { request }],
@@ -36,13 +35,20 @@ export const UserLoginResponse: Sync = ({
       username,
       scrobbleToken,
       listenBrainzName,
-      error,
     }],
   ),
   then: actions([
     Requesting.respond,
-    { request, user, username, scrobbleToken, listenBrainzName, error },
+    { request, user, username, scrobbleToken, listenBrainzName },
   ]),
+});
+
+export const UserLoginErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/User/startSession" }, { request }],
+    [User.startSession, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -84,13 +90,20 @@ export const UserAssociateTokenRequest: Sync = ({
 export const UserAssociateTokenResponse: Sync = ({
   request,
   listenBrainzName,
-  error,
 }) => ({
   when: actions(
     [Requesting.request, { path: "/User/associateToken" }, { request }],
-    [User.associateToken, {}, { listenBrainzName, error }],
+    [User.associateToken, {}, { listenBrainzName }],
   ),
-  then: actions([Requesting.respond, { request, listenBrainzName, error }]),
+  then: actions([Requesting.respond, { request, listenBrainzName }]),
+});
+
+export const UserAssociateTokenErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/User/associateToken" }, { request }],
+    [User.associateToken, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 // ============================================================================
@@ -126,14 +139,24 @@ export const GetTopArtistsRequest: Sync = ({
   ]),
 });
 
-export const GetTopArtistsResponse: Sync = ({ request, artists, error }) => ({
+export const GetTopArtistsResponse: Sync = ({ request, artists }) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/getTopArtists" }, {
       request,
     }],
-    [ListenBrainzAPI.getTopArtists, {}, { artists, error }],
+    [ListenBrainzAPI.getTopArtists, {}, { artists }],
   ),
-  then: actions([Requesting.respond, { request, artists, error }]),
+  then: actions([Requesting.respond, { request, artists }]),
+});
+
+export const GetTopArtistsErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/getTopArtists" }, {
+      request,
+    }],
+    [ListenBrainzAPI.getTopArtists, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -165,14 +188,24 @@ export const GetTopReleasesRequest: Sync = ({
   ]),
 });
 
-export const GetTopReleasesResponse: Sync = ({ request, releases, error }) => ({
+export const GetTopReleasesResponse: Sync = ({ request, releases }) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/getTopReleases" }, {
       request,
     }],
-    [ListenBrainzAPI.getTopReleases, {}, { releases, error }],
+    [ListenBrainzAPI.getTopReleases, {}, { releases }],
   ),
-  then: actions([Requesting.respond, { request, releases, error }]),
+  then: actions([Requesting.respond, { request, releases }]),
+});
+
+export const GetTopReleasesErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/getTopReleases" }, {
+      request,
+    }],
+    [ListenBrainzAPI.getTopReleases, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -207,7 +240,6 @@ export const GetTopReleaseGroupsRequest: Sync = ({
 export const GetTopReleaseGroupsResponse: Sync = ({
   request,
   releaseGroups,
-  error,
 }) => ({
   when: actions(
     [
@@ -215,9 +247,21 @@ export const GetTopReleaseGroupsResponse: Sync = ({
       { path: "/ListenBrainzAPI/getTopReleaseGroups" },
       { request },
     ],
-    [ListenBrainzAPI.getTopReleaseGroups, {}, { releaseGroups, error }],
+    [ListenBrainzAPI.getTopReleaseGroups, {}, { releaseGroups }],
   ),
-  then: actions([Requesting.respond, { request, releaseGroups, error }]),
+  then: actions([Requesting.respond, { request, releaseGroups }]),
+});
+
+export const GetTopReleaseGroupsErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [
+      Requesting.request,
+      { path: "/ListenBrainzAPI/getTopReleaseGroups" },
+      { request },
+    ],
+    [ListenBrainzAPI.getTopReleaseGroups, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -250,15 +294,25 @@ export const GetTopRecordingsRequest: Sync = ({
 });
 
 export const GetTopRecordingsResponse: Sync = (
-  { request, recordings, error },
+  { request, recordings },
 ) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/getTopRecordings" }, {
       request,
     }],
-    [ListenBrainzAPI.getTopRecordings, {}, { recordings, error }],
+    [ListenBrainzAPI.getTopRecordings, {}, { recordings }],
   ),
-  then: actions([Requesting.respond, { request, recordings, error }]),
+  then: actions([Requesting.respond, { request, recordings }]),
+});
+
+export const GetTopRecordingsErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/getTopRecordings" }, {
+      request,
+    }],
+    [ListenBrainzAPI.getTopRecordings, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -291,15 +345,25 @@ export const GetListenHistoryRequest: Sync = ({
 });
 
 export const GetListenHistoryResponse: Sync = (
-  { request, listens, error },
+  { request, listens },
 ) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/getListenHistory" }, {
       request,
     }],
-    [ListenBrainzAPI.getListenHistory, {}, { listens, error }],
+    [ListenBrainzAPI.getListenHistory, {}, { listens }],
   ),
-  then: actions([Requesting.respond, { request, listens, error }]),
+  then: actions([Requesting.respond, { request, listens }]),
+});
+
+export const GetListenHistoryErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/getListenHistory" }, {
+      request,
+    }],
+    [ListenBrainzAPI.getListenHistory, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -328,7 +392,7 @@ export const GetListeningActivityRequest: Sync = ({
 });
 
 export const GetListeningActivityResponse: Sync = (
-  { request, activity, error },
+  { request, activity },
 ) => ({
   when: actions(
     [
@@ -336,9 +400,23 @@ export const GetListeningActivityResponse: Sync = (
       { path: "/ListenBrainzAPI/getListeningActivity" },
       { request },
     ],
-    [ListenBrainzAPI.getListeningActivity, {}, { activity, error }],
+    [ListenBrainzAPI.getListeningActivity, {}, { activity }],
   ),
-  then: actions([Requesting.respond, { request, activity, error }]),
+  then: actions([Requesting.respond, { request, activity }]),
+});
+
+export const GetListeningActivityErrorResponse: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [
+      Requesting.request,
+      { path: "/ListenBrainzAPI/getListeningActivity" },
+      { request },
+    ],
+    [ListenBrainzAPI.getListeningActivity, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -374,7 +452,6 @@ export const GetDailyActivityResponse: Sync = ({
   last_updated,
   stats_range,
   user_id,
-  error,
 }) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/getDailyActivity" }, {
@@ -390,7 +467,6 @@ export const GetDailyActivityResponse: Sync = ({
         last_updated,
         stats_range,
         user_id,
-        error,
       },
     ],
   ),
@@ -404,9 +480,18 @@ export const GetDailyActivityResponse: Sync = ({
       last_updated,
       stats_range,
       user_id,
-      error,
     },
   ]),
+});
+
+export const GetDailyActivityErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/getDailyActivity" }, {
+      request,
+    }],
+    [ListenBrainzAPI.getDailyActivity, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -422,15 +507,25 @@ export const ValidateTokenRequest: Sync = ({ request, token }) => ({
 });
 
 export const ValidateTokenResponse: Sync = (
-  { request, valid, username, error },
+  { request, valid, username },
 ) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/validateToken" }, {
       request,
     }],
-    [ListenBrainzAPI.validateToken, {}, { valid, username, error }],
+    [ListenBrainzAPI.validateToken, {}, { valid, username }],
   ),
-  then: actions([Requesting.respond, { request, valid, username, error }]),
+  then: actions([Requesting.respond, { request, valid, username }]),
+});
+
+export const ValidateTokenErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/validateToken" }, {
+      request,
+    }],
+    [ListenBrainzAPI.validateToken, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -445,7 +540,15 @@ export const ClearCacheRequest: Sync = ({ request, user }) => ({
   then: actions([ListenBrainzAPI.clearCache, { user }]),
 });
 
-export const ClearCacheResponse: Sync = ({ request, error }) => ({
+export const ClearCacheResponse: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/ListenBrainzAPI/clearCache" }, { request }],
+    [ListenBrainzAPI.clearCache, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const ClearCacheErrorResponse: Sync = ({ request, error }) => ({
   when: actions(
     [Requesting.request, { path: "/ListenBrainzAPI/clearCache" }, { request }],
     [ListenBrainzAPI.clearCache, {}, { error }],
@@ -501,13 +604,22 @@ export const GenerateRecommendationsRequest: Sync = ({
 export const GenerateRecommendationsResponse: Sync = ({
   request,
   recommendations,
-  error,
 }) => ({
   when: actions(
     [Requesting.request, { path: "/Recommendation/generate" }, { request }],
-    [Recommendation.generate, {}, { recommendations, error }],
+    [Recommendation.generate, {}, { recommendations }],
   ),
-  then: actions([Requesting.respond, { request, recommendations, error }]),
+  then: actions([Requesting.respond, { request, recommendations }]),
+});
+
+export const GenerateRecommendationsErrorResponse: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/Recommendation/generate" }, { request }],
+    [Recommendation.generate, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -542,7 +654,6 @@ export const GetRecommendationsRequest: Sync = ({
 export const GetRecommendationsResponse: Sync = ({
   request,
   itemsWithReasoning,
-  error,
 }) => ({
   when: actions(
     [
@@ -550,9 +661,21 @@ export const GetRecommendationsResponse: Sync = ({
       { path: "/Recommendation/getRecommendations" },
       { request },
     ],
-    [Recommendation.getRecommendations, {}, { itemsWithReasoning, error }],
+    [Recommendation.getRecommendations, {}, { itemsWithReasoning }],
   ),
-  then: actions([Requesting.respond, { request, itemsWithReasoning, error }]),
+  then: actions([Requesting.respond, { request, itemsWithReasoning }]),
+});
+
+export const GetRecommendationsErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [
+      Requesting.request,
+      { path: "/Recommendation/getRecommendations" },
+      { request },
+    ],
+    [Recommendation.getRecommendations, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
 
 /**
@@ -580,7 +703,17 @@ export const ProvideFeedbackRequest: Sync = ({
   ]),
 });
 
-export const ProvideFeedbackResponse: Sync = ({ request, error }) => ({
+export const ProvideFeedbackResponse: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/Recommendation/provideFeedback" }, {
+      request,
+    }],
+    [Recommendation.provideFeedback, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const ProvideFeedbackErrorResponse: Sync = ({ request, error }) => ({
   when: actions(
     [Requesting.request, { path: "/Recommendation/provideFeedback" }, {
       request,
@@ -605,7 +738,21 @@ export const DeleteRecommendationRequest: Sync = ({
   then: actions([Recommendation.deleteRecommendation, { recommendationId }]),
 });
 
-export const DeleteRecommendationResponse: Sync = ({ request, error }) => ({
+export const DeleteRecommendationResponse: Sync = ({ request }) => ({
+  when: actions(
+    [
+      Requesting.request,
+      { path: "/Recommendation/deleteRecommendation" },
+      { request },
+    ],
+    [Recommendation.deleteRecommendation, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const DeleteRecommendationErrorResponse: Sync = (
+  { request, error },
+) => ({
   when: actions(
     [
       Requesting.request,
@@ -629,7 +776,21 @@ export const ClearRecommendationsRequest: Sync = ({ request, userId }) => ({
   then: actions([Recommendation.clearRecommendations, { userId }]),
 });
 
-export const ClearRecommendationsResponse: Sync = ({ request, error }) => ({
+export const ClearRecommendationsResponse: Sync = ({ request }) => ({
+  when: actions(
+    [
+      Requesting.request,
+      { path: "/Recommendation/clearRecommendations" },
+      { request },
+    ],
+    [Recommendation.clearRecommendations, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const ClearRecommendationsErrorResponse: Sync = (
+  { request, error },
+) => ({
   when: actions(
     [
       Requesting.request,
@@ -658,7 +819,7 @@ export const GetFeedbackHistoryRequest: Sync = ({
 });
 
 export const GetFeedbackHistoryResponse: Sync = (
-  { request, history, error },
+  { request, history },
 ) => ({
   when: actions(
     [
@@ -666,7 +827,19 @@ export const GetFeedbackHistoryResponse: Sync = (
       { path: "/Recommendation/getFeedbackHistory" },
       { request },
     ],
-    [Recommendation.getFeedbackHistory, {}, { history, error }],
+    [Recommendation.getFeedbackHistory, {}, { history }],
   ),
-  then: actions([Requesting.respond, { request, history, error }]),
+  then: actions([Requesting.respond, { request, history }]),
+});
+
+export const GetFeedbackHistoryErrorResponse: Sync = ({ request, error }) => ({
+  when: actions(
+    [
+      Requesting.request,
+      { path: "/Recommendation/getFeedbackHistory" },
+      { request },
+    ],
+    [Recommendation.getFeedbackHistory, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
 });
