@@ -47,6 +47,13 @@ export const inclusions: Record<string, string> = {
   "/api/MusicBrainzAPI/getRecordingWorks": "public work relationship lookup",
   "/api/ListenBrainzAPI/getDailyActivity":
     "user daily activity statistics for home page",
+  "/api/Recommendation/getFeedbackHistory":
+    "user feedback history for recommendations component",
+  "/api/Recommendation/getRecommendations":
+    "get recommendations for recommendation modal",
+  "/api/Recommendation/provideFeedback": "submit feedback for recommendations",
+  "/api/Recommendation/deleteRecommendation":
+    "delete recommendation from user history",
 };
 
 /**
@@ -77,9 +84,5 @@ export const exclusions: Array<string> = [
 
   // Recommendation - All require userId
   "/api/Recommendation/generate",
-  "/api/Recommendation/getRecommendations",
-  "/api/Recommendation/provideFeedback",
-  "/api/Recommendation/deleteRecommendation",
   "/api/Recommendation/clearRecommendations",
-  "/api/Recommendation/getFeedbackHistory",
 ];
