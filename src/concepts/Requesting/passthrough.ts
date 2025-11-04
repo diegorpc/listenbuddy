@@ -32,15 +32,21 @@ export const inclusions: Record<string, string> = {
   "/api/MusicBrainzAPI/lookupArtist": "public MusicBrainz artist lookup",
   "/api/MusicBrainzAPI/lookupRecording": "public MusicBrainz recording lookup",
   "/api/MusicBrainzAPI/lookupRelease": "public MusicBrainz release lookup",
-  "/api/MusicBrainzAPI/lookupReleaseGroup": "public MusicBrainz release group lookup",
+  "/api/MusicBrainzAPI/lookupReleaseGroup":
+    "public MusicBrainz release group lookup",
   "/api/MusicBrainzAPI/lookupWork": "public MusicBrainz work lookup",
   "/api/MusicBrainzAPI/searchEntities": "public MusicBrainz search",
   "/api/MusicBrainzAPI/browseByEntity": "public MusicBrainz browse",
   "/api/MusicBrainzAPI/getEntityGenres": "public genre/tag lookup",
-  "/api/MusicBrainzAPI/getArtistSimilarities": "public artist similarity lookup",
-  "/api/MusicBrainzAPI/getSimilarRecordings": "public recording similarity lookup",
-  "/api/MusicBrainzAPI/getSimilarReleaseGroups": "public release group similarity lookup",
+  "/api/MusicBrainzAPI/getArtistSimilarities":
+    "public artist similarity lookup",
+  "/api/MusicBrainzAPI/getSimilarRecordings":
+    "public recording similarity lookup",
+  "/api/MusicBrainzAPI/getSimilarReleaseGroups":
+    "public release group similarity lookup",
   "/api/MusicBrainzAPI/getRecordingWorks": "public work relationship lookup",
+  "/api/ListenBrainzAPI/getDailyActivity":
+    "user daily activity statistics for home page",
 };
 
 /**
@@ -66,7 +72,6 @@ export const exclusions: Array<string> = [
   "/api/ListenBrainzAPI/getTopRecordings",
   "/api/ListenBrainzAPI/getListenHistory",
   "/api/ListenBrainzAPI/getListeningActivity",
-  "/api/ListenBrainzAPI/getDailyActivity",
   "/api/ListenBrainzAPI/validateToken",
   "/api/ListenBrainzAPI/clearCache",
 
