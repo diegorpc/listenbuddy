@@ -25,12 +25,22 @@
  */
 
 export const inclusions: Record<string, string> = {
-  // Feel free to delete these example inclusions
-  "/api/LikertSurvey/_getSurveyQuestions": "this is a public query",
-  "/api/LikertSurvey/_getSurveyResponses": "responses are public",
-  "/api/LikertSurvey/_getRespondentAnswers": "answers are visible",
-  "/api/LikertSurvey/submitResponse": "allow anyone to submit response",
-  "/api/LikertSurvey/updateResponse": "allow anyone to update their response",
+  // User - Public registration
+  "/api/User/createUser": "public user registration",
+
+  // MusicBrainzAPI - All public queries for MusicBrainz data
+  "/api/MusicBrainzAPI/lookupArtist": "public MusicBrainz artist lookup",
+  "/api/MusicBrainzAPI/lookupRecording": "public MusicBrainz recording lookup",
+  "/api/MusicBrainzAPI/lookupRelease": "public MusicBrainz release lookup",
+  "/api/MusicBrainzAPI/lookupReleaseGroup": "public MusicBrainz release group lookup",
+  "/api/MusicBrainzAPI/lookupWork": "public MusicBrainz work lookup",
+  "/api/MusicBrainzAPI/searchEntities": "public MusicBrainz search",
+  "/api/MusicBrainzAPI/browseByEntity": "public MusicBrainz browse",
+  "/api/MusicBrainzAPI/getEntityGenres": "public genre/tag lookup",
+  "/api/MusicBrainzAPI/getArtistSimilarities": "public artist similarity lookup",
+  "/api/MusicBrainzAPI/getSimilarRecordings": "public recording similarity lookup",
+  "/api/MusicBrainzAPI/getSimilarReleaseGroups": "public release group similarity lookup",
+  "/api/MusicBrainzAPI/getRecordingWorks": "public work relationship lookup",
 };
 
 /**
@@ -44,7 +54,27 @@ export const inclusions: Record<string, string> = {
  */
 
 export const exclusions: Array<string> = [
-  // Feel free to delete these example exclusions
-  "/api/LikertSurvey/createSurvey",
-  "/api/LikertSurvey/addQuestion",
+  // User - Authenticated actions
+  "/api/User/startSession",
+  "/api/User/endSession",
+  "/api/User/associateToken",
+
+  // ListenBrainzAPI - All require user's scrobble token
+  "/api/ListenBrainzAPI/getTopArtists",
+  "/api/ListenBrainzAPI/getTopReleases",
+  "/api/ListenBrainzAPI/getTopReleaseGroups",
+  "/api/ListenBrainzAPI/getTopRecordings",
+  "/api/ListenBrainzAPI/getListenHistory",
+  "/api/ListenBrainzAPI/getListeningActivity",
+  "/api/ListenBrainzAPI/getDailyActivity",
+  "/api/ListenBrainzAPI/validateToken",
+  "/api/ListenBrainzAPI/clearCache",
+
+  // Recommendation - All require userId
+  "/api/Recommendation/generate",
+  "/api/Recommendation/getRecommendations",
+  "/api/Recommendation/provideFeedback",
+  "/api/Recommendation/deleteRecommendation",
+  "/api/Recommendation/clearRecommendations",
+  "/api/Recommendation/getFeedbackHistory",
 ];
